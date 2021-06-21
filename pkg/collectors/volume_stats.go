@@ -77,4 +77,55 @@ func (collector *volumeStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 // Collect implements the prometheus.Collector interface.
-func (collector *volumeSta
+func (collector *volumeStatsCollector) Collect(ch chan<- prometheus.Metric) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	resp, err := ctxhttp.Get(ctx, http.DefaultClient, collector.host)
+	if err != nil {
+		glog.Errorf("failed to get stats from %s: %v", collector.host, err)
+		return
+	}
+	defer resp.Body.Close()
+	rBody, _ := ioutil.ReadAll(resp.Body)
+
+	statsSummary := v1alpha1.Summary{}
+	err = json.Unmarshal(rBody, &statsSummary)
+	if err != nil {
+		glog.Errorf("failed to parse stats summary from %s: %v", collector.host, err)
+		return
+	}
+
+	addGauge := func(desc *prometheus.Desc, pvcRef *v1alpha1.PVCReference, v float64, lv ...string) {
+		lv = append([]string{pvcRef.Namespace, pvcRef.Name}, lv...)
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, v, lv...)
+	}
+
+	if statsSummary.Pods != nil {
+		allPVCs := sets.String{}
+		for _, podStats := range statsSummary.Pods {
+			if podStats.VolumeStats == nil {
+				continue
+			}
+			for _, volumeStat := range podStats.VolumeStats {
+				pvcRef := volumeStat.PVCRef
+				if pvcRef == nil {
+					// ignore if no PVC reference
+					continue
+				}
+				pvcUniqStr := pvcRef.Namespace + "/" + pvcRef.Name
+				if allPVCs.Has(pvcUniqStr) {
+					// ignore if already collected
+					continue
+				}
+				addGauge(volumeStatsCapacityBytes, pvcRef, float64(*volumeStat.CapacityBytes))
+				addGauge(volumeStatsAvailableBytes, pvcRef, float64(*volumeStat.AvailableBytes))
+				addGauge(volumeStatsUsedBytes, pvcRef, float64(*volumeStat.UsedBytes))
+				addGauge(volumeStatsInodes, pvcRef, float64(*volumeStat.Inodes))
+				addGauge(volumeStatsInodesFree, pvcRef, float64(*volumeStat.InodesFree))
+				addGauge(volumeStatsInodesUsed, pvcRef, float64(*volumeStat.InodesUsed))
+				allPVCs.Insert(pvcUniqStr)
+			}
+		}
+	}
+}
