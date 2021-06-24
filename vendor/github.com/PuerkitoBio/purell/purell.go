@@ -69,4 +69,91 @@ const (
 	FlagsUnsafeGreedy    NormalizationFlags = FlagsUsuallySafeGreedy | FlagRemoveDirectoryIndex | FlagRemoveFragment | FlagForceHTTP | FlagRemoveDuplicateSlashes | FlagRemoveWWW | FlagSortQuery
 	FlagsUnsafeNonGreedy NormalizationFlags = FlagsUsuallySafeNonGreedy | FlagRemoveDirectoryIndex | FlagRemoveFragment | FlagForceHTTP | FlagRemoveDuplicateSlashes | FlagAddWWW | FlagSortQuery
 
-	// Convenience set of all available fla
+	// Convenience set of all available flags
+	FlagsAllGreedy    = FlagsUnsafeGreedy | FlagDecodeDWORDHost | FlagDecodeOctalHost | FlagDecodeHexHost | FlagRemoveUnnecessaryHostDots | FlagRemoveEmptyPortSeparator
+	FlagsAllNonGreedy = FlagsUnsafeNonGreedy | FlagDecodeDWORDHost | FlagDecodeOctalHost | FlagDecodeHexHost | FlagRemoveUnnecessaryHostDots | FlagRemoveEmptyPortSeparator
+)
+
+const (
+	defaultHttpPort  = ":80"
+	defaultHttpsPort = ":443"
+)
+
+// Regular expressions used by the normalizations
+var rxPort = regexp.MustCompile(`(:\d+)/?$`)
+var rxDirIndex = regexp.MustCompile(`(^|/)((?:default|index)\.\w{1,4})$`)
+var rxDupSlashes = regexp.MustCompile(`/{2,}`)
+var rxDWORDHost = regexp.MustCompile(`^(\d+)((?:\.+)?(?:\:\d*)?)$`)
+var rxOctalHost = regexp.MustCompile(`^(0\d*)\.(0\d*)\.(0\d*)\.(0\d*)((?:\.+)?(?:\:\d*)?)$`)
+var rxHexHost = regexp.MustCompile(`^0x([0-9A-Fa-f]+)((?:\.+)?(?:\:\d*)?)$`)
+var rxHostDots = regexp.MustCompile(`^(.+?)(:\d+)?$`)
+var rxEmptyPort = regexp.MustCompile(`:+$`)
+
+// Map of flags to implementation function.
+// FlagDecodeUnnecessaryEscapes has no action, since it is done automatically
+// by parsing the string as an URL. Same for FlagUppercaseEscapes and FlagRemoveEmptyQuerySeparator.
+
+// Since maps have undefined traversing order, make a slice of ordered keys
+var flagsOrder = []NormalizationFlags{
+	FlagLowercaseScheme,
+	FlagLowercaseHost,
+	FlagRemoveDefaultPort,
+	FlagRemoveDirectoryIndex,
+	FlagRemoveDotSegments,
+	FlagRemoveFragment,
+	FlagForceHTTP, // Must be after remove default port (because https=443/http=80)
+	FlagRemoveDuplicateSlashes,
+	FlagRemoveWWW,
+	FlagAddWWW,
+	FlagSortQuery,
+	FlagDecodeDWORDHost,
+	FlagDecodeOctalHost,
+	FlagDecodeHexHost,
+	FlagRemoveUnnecessaryHostDots,
+	FlagRemoveEmptyPortSeparator,
+	FlagRemoveTrailingSlash, // These two (add/remove trailing slash) must be last
+	FlagAddTrailingSlash,
+}
+
+// ... and then the map, where order is unimportant
+var flags = map[NormalizationFlags]func(*url.URL){
+	FlagLowercaseScheme:           lowercaseScheme,
+	FlagLowercaseHost:             lowercaseHost,
+	FlagRemoveDefaultPort:         removeDefaultPort,
+	FlagRemoveDirectoryIndex:      removeDirectoryIndex,
+	FlagRemoveDotSegments:         removeDotSegments,
+	FlagRemoveFragment:            removeFragment,
+	FlagForceHTTP:                 forceHTTP,
+	FlagRemoveDuplicateSlashes:    removeDuplicateSlashes,
+	FlagRemoveWWW:                 removeWWW,
+	FlagAddWWW:                    addWWW,
+	FlagSortQuery:                 sortQuery,
+	FlagDecodeDWORDHost:           decodeDWORDHost,
+	FlagDecodeOctalHost:           decodeOctalHost,
+	FlagDecodeHexHost:             decodeHexHost,
+	FlagRemoveUnnecessaryHostDots: removeUnncessaryHostDots,
+	FlagRemoveEmptyPortSeparator:  removeEmptyPortSeparator,
+	FlagRemoveTrailingSlash:       removeTrailingSlash,
+	FlagAddTrailingSlash:          addTrailingSlash,
+}
+
+// MustNormalizeURLString returns the normalized string, and panics if an error occurs.
+// It takes an URL string as input, as well as the normalization flags.
+func MustNormalizeURLString(u string, f NormalizationFlags) string {
+	result, e := NormalizeURLString(u, f)
+	if e != nil {
+		panic(e)
+	}
+	return result
+}
+
+// NormalizeURLString returns the normalized string, or an error if it can't be parsed into an URL object.
+// It takes an URL string as input, as well as the normalization flags.
+func NormalizeURLString(u string, f NormalizationFlags) (string, error) {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return "", err
+	}
+
+	if f&FlagLowercaseHost == FlagLowercaseHost {
+		parsed.Host = strings.ToLower(pars
