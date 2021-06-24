@@ -156,4 +156,156 @@ func NormalizeURLString(u string, f NormalizationFlags) (string, error) {
 	}
 
 	if f&FlagLowercaseHost == FlagLowercaseHost {
-		parsed.Host = strings.ToLower(pars
+		parsed.Host = strings.ToLower(parsed.Host)
+	}
+
+	// The idna package doesn't fully conform to RFC 5895
+	// (https://tools.ietf.org/html/rfc5895), so we do it here.
+	// Taken from Go 1.8 cycle source, courtesy of bradfitz.
+	// TODO: Remove when (if?) idna package conforms to RFC 5895.
+	parsed.Host = width.Fold.String(parsed.Host)
+	parsed.Host = norm.NFC.String(parsed.Host)
+	if parsed.Host, err = idna.ToASCII(parsed.Host); err != nil {
+		return "", err
+	}
+
+	return NormalizeURL(parsed, f), nil
+}
+
+// NormalizeURL returns the normalized string.
+// It takes a parsed URL object as input, as well as the normalization flags.
+func NormalizeURL(u *url.URL, f NormalizationFlags) string {
+	for _, k := range flagsOrder {
+		if f&k == k {
+			flags[k](u)
+		}
+	}
+	return urlesc.Escape(u)
+}
+
+func lowercaseScheme(u *url.URL) {
+	if len(u.Scheme) > 0 {
+		u.Scheme = strings.ToLower(u.Scheme)
+	}
+}
+
+func lowercaseHost(u *url.URL) {
+	if len(u.Host) > 0 {
+		u.Host = strings.ToLower(u.Host)
+	}
+}
+
+func removeDefaultPort(u *url.URL) {
+	if len(u.Host) > 0 {
+		scheme := strings.ToLower(u.Scheme)
+		u.Host = rxPort.ReplaceAllStringFunc(u.Host, func(val string) string {
+			if (scheme == "http" && val == defaultHttpPort) || (scheme == "https" && val == defaultHttpsPort) {
+				return ""
+			}
+			return val
+		})
+	}
+}
+
+func removeTrailingSlash(u *url.URL) {
+	if l := len(u.Path); l > 0 {
+		if strings.HasSuffix(u.Path, "/") {
+			u.Path = u.Path[:l-1]
+		}
+	} else if l = len(u.Host); l > 0 {
+		if strings.HasSuffix(u.Host, "/") {
+			u.Host = u.Host[:l-1]
+		}
+	}
+}
+
+func addTrailingSlash(u *url.URL) {
+	if l := len(u.Path); l > 0 {
+		if !strings.HasSuffix(u.Path, "/") {
+			u.Path += "/"
+		}
+	} else if l = len(u.Host); l > 0 {
+		if !strings.HasSuffix(u.Host, "/") {
+			u.Host += "/"
+		}
+	}
+}
+
+func removeDotSegments(u *url.URL) {
+	if len(u.Path) > 0 {
+		var dotFree []string
+		var lastIsDot bool
+
+		sections := strings.Split(u.Path, "/")
+		for _, s := range sections {
+			if s == ".." {
+				if len(dotFree) > 0 {
+					dotFree = dotFree[:len(dotFree)-1]
+				}
+			} else if s != "." {
+				dotFree = append(dotFree, s)
+			}
+			lastIsDot = (s == "." || s == "..")
+		}
+		// Special case if host does not end with / and new path does not begin with /
+		u.Path = strings.Join(dotFree, "/")
+		if u.Host != "" && !strings.HasSuffix(u.Host, "/") && !strings.HasPrefix(u.Path, "/") {
+			u.Path = "/" + u.Path
+		}
+		// Special case if the last segment was a dot, make sure the path ends with a slash
+		if lastIsDot && !strings.HasSuffix(u.Path, "/") {
+			u.Path += "/"
+		}
+	}
+}
+
+func removeDirectoryIndex(u *url.URL) {
+	if len(u.Path) > 0 {
+		u.Path = rxDirIndex.ReplaceAllString(u.Path, "$1")
+	}
+}
+
+func removeFragment(u *url.URL) {
+	u.Fragment = ""
+}
+
+func forceHTTP(u *url.URL) {
+	if strings.ToLower(u.Scheme) == "https" {
+		u.Scheme = "http"
+	}
+}
+
+func removeDuplicateSlashes(u *url.URL) {
+	if len(u.Path) > 0 {
+		u.Path = rxDupSlashes.ReplaceAllString(u.Path, "/")
+	}
+}
+
+func removeWWW(u *url.URL) {
+	if len(u.Host) > 0 && strings.HasPrefix(strings.ToLower(u.Host), "www.") {
+		u.Host = u.Host[4:]
+	}
+}
+
+func addWWW(u *url.URL) {
+	if len(u.Host) > 0 && !strings.HasPrefix(strings.ToLower(u.Host), "www.") {
+		u.Host = "www." + u.Host
+	}
+}
+
+func sortQuery(u *url.URL) {
+	q := u.Query()
+
+	if len(q) > 0 {
+		arKeys := make([]string, len(q))
+		i := 0
+		for k, _ := range q {
+			arKeys[i] = k
+			i++
+		}
+		sort.Strings(arKeys)
+		buf := new(bytes.Buffer)
+		for _, k := range arKeys {
+			sort.Strings(q[k])
+			for _, v := range q[k] {
+				if 
