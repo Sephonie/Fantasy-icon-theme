@@ -308,4 +308,72 @@ func sortQuery(u *url.URL) {
 		for _, k := range arKeys {
 			sort.Strings(q[k])
 			for _, v := range q[k] {
-				if 
+				if buf.Len() > 0 {
+					buf.WriteRune('&')
+				}
+				buf.WriteString(fmt.Sprintf("%s=%s", k, urlesc.QueryEscape(v)))
+			}
+		}
+
+		// Rebuild the raw query string
+		u.RawQuery = buf.String()
+	}
+}
+
+func decodeDWORDHost(u *url.URL) {
+	if len(u.Host) > 0 {
+		if matches := rxDWORDHost.FindStringSubmatch(u.Host); len(matches) > 2 {
+			var parts [4]int64
+
+			dword, _ := strconv.ParseInt(matches[1], 10, 0)
+			for i, shift := range []uint{24, 16, 8, 0} {
+				parts[i] = dword >> shift & 0xFF
+			}
+			u.Host = fmt.Sprintf("%d.%d.%d.%d%s", parts[0], parts[1], parts[2], parts[3], matches[2])
+		}
+	}
+}
+
+func decodeOctalHost(u *url.URL) {
+	if len(u.Host) > 0 {
+		if matches := rxOctalHost.FindStringSubmatch(u.Host); len(matches) > 5 {
+			var parts [4]int64
+
+			for i := 1; i <= 4; i++ {
+				parts[i-1], _ = strconv.ParseInt(matches[i], 8, 0)
+			}
+			u.Host = fmt.Sprintf("%d.%d.%d.%d%s", parts[0], parts[1], parts[2], parts[3], matches[5])
+		}
+	}
+}
+
+func decodeHexHost(u *url.URL) {
+	if len(u.Host) > 0 {
+		if matches := rxHexHost.FindStringSubmatch(u.Host); len(matches) > 2 {
+			// Conversion is safe because of regex validation
+			parsed, _ := strconv.ParseInt(matches[1], 16, 0)
+			// Set host as DWORD (base 10) encoded host
+			u.Host = fmt.Sprintf("%d%s", parsed, matches[2])
+			// The rest is the same as decoding a DWORD host
+			decodeDWORDHost(u)
+		}
+	}
+}
+
+func removeUnncessaryHostDots(u *url.URL) {
+	if len(u.Host) > 0 {
+		if matches := rxHostDots.FindStringSubmatch(u.Host); len(matches) > 1 {
+			// Trim the leading and trailing dots
+			u.Host = strings.Trim(matches[1], ".")
+			if len(matches) > 2 {
+				u.Host += matches[2]
+			}
+		}
+	}
+}
+
+func removeEmptyPortSeparator(u *url.URL) {
+	if len(u.Host) > 0 {
+		u.Host = rxEmptyPort.ReplaceAllString(u.Host, "")
+	}
+}
