@@ -140,4 +140,41 @@ func unescapeUserinfo(s string) string {
 //	- if u.Host is empty, host/ is omitted.
 //	- if u.Scheme and u.Host are empty and u.User is nil,
 //	   the entire scheme://userinfo@host/ is omitted.
-//	- if u.Host i
+//	- if u.Host is non-empty and u.Path begins with a /,
+//	   the form host/path does not add its own /.
+//	- if u.RawQuery is empty, ?query is omitted.
+//	- if u.Fragment is empty, #fragment is omitted.
+func Escape(u *url.URL) string {
+	var buf bytes.Buffer
+	if u.Scheme != "" {
+		buf.WriteString(u.Scheme)
+		buf.WriteByte(':')
+	}
+	if u.Opaque != "" {
+		buf.WriteString(u.Opaque)
+	} else {
+		if u.Scheme != "" || u.Host != "" || u.User != nil {
+			buf.WriteString("//")
+			if ui := u.User; ui != nil {
+				buf.WriteString(unescapeUserinfo(ui.String()))
+				buf.WriteByte('@')
+			}
+			if h := u.Host; h != "" {
+				buf.WriteString(h)
+			}
+		}
+		if u.Path != "" && u.Path[0] != '/' && u.Host != "" {
+			buf.WriteByte('/')
+		}
+		buf.WriteString(escape(u.Path, encodePath))
+	}
+	if u.RawQuery != "" {
+		buf.WriteByte('?')
+		buf.WriteString(u.RawQuery)
+	}
+	if u.Fragment != "" {
+		buf.WriteByte('#')
+		buf.WriteString(escape(u.Fragment, encodeFragment))
+	}
+	return buf.String()
+}
