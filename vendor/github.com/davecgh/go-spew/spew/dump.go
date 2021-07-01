@@ -161,4 +161,136 @@ func (d *dumpState) dumpPtr(v reflect.Value) {
 func (d *dumpState) dumpSlice(v reflect.Value) {
 	// Determine whether this type should be hex dumped or not.  Also,
 	// for types which should be hexdumped, try to use the underlying data
-	// first, then fall b
+	// first, then fall back to trying to convert them to a uint8 slice.
+	var buf []uint8
+	doConvert := false
+	doHexDump := false
+	numEntries := v.Len()
+	if numEntries > 0 {
+		vt := v.Index(0).Type()
+		vts := vt.String()
+		switch {
+		// C types that need to be converted.
+		case cCharRE.MatchString(vts):
+			fallthrough
+		case cUnsignedCharRE.MatchString(vts):
+			fallthrough
+		case cUint8tCharRE.MatchString(vts):
+			doConvert = true
+
+		// Try to use existing uint8 slices and fall back to converting
+		// and copying if that fails.
+		case vt.Kind() == reflect.Uint8:
+			// We need an addressable interface to convert the type
+			// to a byte slice.  However, the reflect package won't
+			// give us an interface on certain things like
+			// unexported struct fields in order to enforce
+			// visibility rules.  We use unsafe, when available, to
+			// bypass these restrictions since this package does not
+			// mutate the values.
+			vs := v
+			if !vs.CanInterface() || !vs.CanAddr() {
+				vs = unsafeReflectValue(vs)
+			}
+			if !UnsafeDisabled {
+				vs = vs.Slice(0, numEntries)
+
+				// Use the existing uint8 slice if it can be
+				// type asserted.
+				iface := vs.Interface()
+				if slice, ok := iface.([]uint8); ok {
+					buf = slice
+					doHexDump = true
+					break
+				}
+			}
+
+			// The underlying data needs to be converted if it can't
+			// be type asserted to a uint8 slice.
+			doConvert = true
+		}
+
+		// Copy and convert the underlying type if needed.
+		if doConvert && vt.ConvertibleTo(uint8Type) {
+			// Convert and copy each element into a uint8 byte
+			// slice.
+			buf = make([]uint8, numEntries)
+			for i := 0; i < numEntries; i++ {
+				vv := v.Index(i)
+				buf[i] = uint8(vv.Convert(uint8Type).Uint())
+			}
+			doHexDump = true
+		}
+	}
+
+	// Hexdump the entire slice as needed.
+	if doHexDump {
+		indent := strings.Repeat(d.cs.Indent, d.depth)
+		str := indent + hex.Dump(buf)
+		str = strings.Replace(str, "\n", "\n"+indent, -1)
+		str = strings.TrimRight(str, d.cs.Indent)
+		d.w.Write([]byte(str))
+		return
+	}
+
+	// Recursively call dump for each item.
+	for i := 0; i < numEntries; i++ {
+		d.dump(d.unpackValue(v.Index(i)))
+		if i < (numEntries - 1) {
+			d.w.Write(commaNewlineBytes)
+		} else {
+			d.w.Write(newlineBytes)
+		}
+	}
+}
+
+// dump is the main workhorse for dumping a value.  It uses the passed reflect
+// value to figure out what kind of object we are dealing with and formats it
+// appropriately.  It is a recursive function, however circular data structures
+// are detected and handled properly.
+func (d *dumpState) dump(v reflect.Value) {
+	// Handle invalid reflect values immediately.
+	kind := v.Kind()
+	if kind == reflect.Invalid {
+		d.w.Write(invalidAngleBytes)
+		return
+	}
+
+	// Handle pointers specially.
+	if kind == reflect.Ptr {
+		d.indent()
+		d.dumpPtr(v)
+		return
+	}
+
+	// Print type information unless already handled elsewhere.
+	if !d.ignoreNextType {
+		d.indent()
+		d.w.Write(openParenBytes)
+		d.w.Write([]byte(v.Type().String()))
+		d.w.Write(closeParenBytes)
+		d.w.Write(spaceBytes)
+	}
+	d.ignoreNextType = false
+
+	// Display length and capacity if the built-in len and cap functions
+	// work with the value's kind and the len/cap itself is non-zero.
+	valueLen, valueCap := 0, 0
+	switch v.Kind() {
+	case reflect.Array, reflect.Slice, reflect.Chan:
+		valueLen, valueCap = v.Len(), v.Cap()
+	case reflect.Map, reflect.String:
+		valueLen = v.Len()
+	}
+	if valueLen != 0 || !d.cs.DisableCapacities && valueCap != 0 {
+		d.w.Write(openParenBytes)
+		if valueLen != 0 {
+			d.w.Write(lenEqualsBytes)
+			printInt(d.w, int64(valueLen), 10)
+		}
+		if !d.cs.DisableCapacities && valueCap != 0 {
+			if valueLen != 0 {
+				d.w.Write(spaceBytes)
+			}
+			d.w.Write(capEqualsBytes)
+			printInt(d.w, int64(
