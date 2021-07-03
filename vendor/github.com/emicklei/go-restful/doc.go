@@ -119,4 +119,67 @@ If path or query parameters are not valid (content or type) then use http.Status
 
 	404: Not Found
 
-Despite a valid URI, the resource
+Despite a valid URI, the resource requested may not be available
+
+	500: Internal Server Error
+
+If the application logic could not process the request (or write the response) then use http.StatusInternalServerError.
+
+	405: Method Not Allowed
+
+The request has a valid URL but the method (GET,PUT,POST,...) is not allowed.
+
+	406: Not Acceptable
+
+The request does not have or has an unknown Accept Header set for this operation.
+
+	415: Unsupported Media Type
+
+The request does not have or has an unknown Content-Type Header set for this operation.
+
+ServiceError
+
+In addition to setting the correct (error) Http status code, you can choose to write a ServiceError message on the response.
+
+Performance options
+
+This package has several options that affect the performance of your service. It is important to understand them and how you can change it.
+
+	restful.DefaultContainer.DoNotRecover(false)
+
+DoNotRecover controls whether panics will be caught to return HTTP 500.
+If set to false, the container will recover from panics.
+Default value is true
+
+	restful.SetCompressorProvider(NewBoundedCachedCompressors(20, 20))
+
+If content encoding is enabled then the default strategy for getting new gzip/zlib writers and readers is to use a sync.Pool.
+Because writers are expensive structures, performance is even more improved when using a preloaded cache. You can also inject your own implementation.
+
+Trouble shooting
+
+This package has the means to produce detail logging of the complete Http request matching process and filter invocation.
+Enabling this feature requires you to set an implementation of restful.StdLogger (e.g. log.Logger) instance such as:
+
+	restful.TraceLogger(log.New(os.Stdout, "[restful] ", log.LstdFlags|log.Lshortfile))
+
+Logging
+
+The restful.SetLogger() method allows you to override the logger used by the package. By default restful
+uses the standard library `log` package and logs to stdout. Different logging packages are supported as
+long as they conform to `StdLogger` interface defined in the `log` sub-package, writing an adapter for your
+preferred package is simple.
+
+Resources
+
+[project]: https://github.com/emicklei/go-restful
+
+[examples]: https://github.com/emicklei/go-restful/blob/master/examples
+
+[design]:  http://ernestmicklei.com/2012/11/11/go-restful-api-design/
+
+[showcases]: https://github.com/emicklei/mora, https://github.com/emicklei/landskape
+
+(c) 2012-2015, http://ernestmicklei.com. MIT License
+*/
+package restful
