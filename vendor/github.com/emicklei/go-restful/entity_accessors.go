@@ -144,4 +144,26 @@ func (e entityJSONAccess) Write(resp *Response, status int, v interface{}) error
 	return writeJSON(resp, status, e.ContentType, v)
 }
 
-// write marshalls the value to JSON and set 
+// write marshalls the value to JSON and set the Content-Type Header.
+func writeJSON(resp *Response, status int, contentType string, v interface{}) error {
+	if v == nil {
+		resp.WriteHeader(status)
+		// do not write a nil representation
+		return nil
+	}
+	if resp.prettyPrint {
+		// pretty output must be created and written explicitly
+		output, err := json.MarshalIndent(v, " ", " ")
+		if err != nil {
+			return err
+		}
+		resp.Header().Set(HEADER_ContentType, contentType)
+		resp.WriteHeader(status)
+		_, err = resp.Write(output)
+		return err
+	}
+	// not-so-pretty
+	resp.Header().Set(HEADER_ContentType, contentType)
+	resp.WriteHeader(status)
+	return json.NewEncoder(resp).Encode(v)
+}
