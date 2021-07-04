@@ -37,4 +37,111 @@ type entityReaderWriters struct {
 }
 
 func init() {
-	RegisterEntityAccessor
+	RegisterEntityAccessor(MIME_JSON, NewEntityAccessorJSON(MIME_JSON))
+	RegisterEntityAccessor(MIME_XML, NewEntityAccessorXML(MIME_XML))
+}
+
+// RegisterEntityAccessor add/overrides the ReaderWriter for encoding content with this MIME type.
+func RegisterEntityAccessor(mime string, erw EntityReaderWriter) {
+	entityAccessRegistry.protection.Lock()
+	defer entityAccessRegistry.protection.Unlock()
+	entityAccessRegistry.accessors[mime] = erw
+}
+
+// NewEntityAccessorJSON returns a new EntityReaderWriter for accessing JSON content.
+// This package is already initialized with such an accessor using the MIME_JSON contentType.
+func NewEntityAccessorJSON(contentType string) EntityReaderWriter {
+	return entityJSONAccess{ContentType: contentType}
+}
+
+// NewEntityAccessorXML returns a new EntityReaderWriter for accessing XML content.
+// This package is already initialized with such an accessor using the MIME_XML contentType.
+func NewEntityAccessorXML(contentType string) EntityReaderWriter {
+	return entityXMLAccess{ContentType: contentType}
+}
+
+// accessorAt returns the registered ReaderWriter for this MIME type.
+func (r *entityReaderWriters) accessorAt(mime string) (EntityReaderWriter, bool) {
+	r.protection.RLock()
+	defer r.protection.RUnlock()
+	er, ok := r.accessors[mime]
+	if !ok {
+		// retry with reverse lookup
+		// more expensive but we are in an exceptional situation anyway
+		for k, v := range r.accessors {
+			if strings.Contains(mime, k) {
+				return v, true
+			}
+		}
+	}
+	return er, ok
+}
+
+// entityXMLAccess is a EntityReaderWriter for XML encoding
+type entityXMLAccess struct {
+	// This is used for setting the Content-Type header when writing
+	ContentType string
+}
+
+// Read unmarshalls the value from XML
+func (e entityXMLAccess) Read(req *Request, v interface{}) error {
+	return xml.NewDecoder(req.Request.Body).Decode(v)
+}
+
+// Write marshalls the value to JSON and set the Content-Type Header.
+func (e entityXMLAccess) Write(resp *Response, status int, v interface{}) error {
+	return writeXML(resp, status, e.ContentType, v)
+}
+
+// writeXML marshalls the value to JSON and set the Content-Type Header.
+func writeXML(resp *Response, status int, contentType string, v interface{}) error {
+	if v == nil {
+		resp.WriteHeader(status)
+		// do not write a nil representation
+		return nil
+	}
+	if resp.prettyPrint {
+		// pretty output must be created and written explicitly
+		output, err := xml.MarshalIndent(v, " ", " ")
+		if err != nil {
+			return err
+		}
+		resp.Header().Set(HEADER_ContentType, contentType)
+		resp.WriteHeader(status)
+		_, err = resp.Write([]byte(xml.Header))
+		if err != nil {
+			return err
+		}
+		_, err = resp.Write(output)
+		return err
+	}
+	// not-so-pretty
+	resp.Header().Set(HEADER_ContentType, contentType)
+	resp.WriteHeader(status)
+	return xml.NewEncoder(resp).Encode(v)
+}
+
+// entityJSONAccess is a EntityReaderWriter for JSON encoding
+type entityJSONAccess struct {
+	// This is used for setting the Content-Type header when writing
+	ContentType string
+}
+
+// JSONNewDecoderFunc can be used to inject a different configration for the json Decoder instance.
+var JSONNewDecoderFunc = func(r io.Reader) *json.Decoder {
+	decoder := json.NewDecoder(r)
+	decoder.UseNumber()
+	return decoder
+}
+
+// Read unmarshalls the value from JSON
+func (e entityJSONAccess) Read(req *Request, v interface{}) error {
+	return JSONNewDecoderFunc(req.Request.Body).Decode(v)
+}
+
+// Write marshalls the value to JSON and set the Content-Type Header.
+func (e entityJSONAccess) Write(resp *Response, status int, v interface{}) error {
+	return writeJSON(resp, status, e.ContentType, v)
+}
+
+// write marshalls the value to JSON and set 
