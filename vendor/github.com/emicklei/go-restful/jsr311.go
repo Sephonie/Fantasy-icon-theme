@@ -145,4 +145,107 @@ func (r RouterJSR311) bestMatchByMedia(routes []Route, contentType string, accep
 }
 
 // http://jsr311.java.net/nonav/releases/1.1/spec/spec3.html#x3-360003.7.2  (step 2)
-func 
+func (r RouterJSR311) selectRoutes(dispatcher *WebService, pathRemainder string) []Route {
+	filtered := &sortableRouteCandidates{}
+	for _, each := range dispatcher.Routes() {
+		pathExpr := each.pathExpr
+		matches := pathExpr.Matcher.FindStringSubmatch(pathRemainder)
+		if matches != nil {
+			lastMatch := matches[len(matches)-1]
+			if len(lastMatch) == 0 || lastMatch == "/" { // do not include if value is neither empty nor ‘/’.
+				filtered.candidates = append(filtered.candidates,
+					routeCandidate{each, len(matches) - 1, pathExpr.LiteralCount, pathExpr.VarCount})
+			}
+		}
+	}
+	if len(filtered.candidates) == 0 {
+		if trace {
+			traceLogger.Printf("WebService on path %s has no routes that match URL path remainder:%s\n", dispatcher.rootPath, pathRemainder)
+		}
+		return []Route{}
+	}
+	sort.Sort(sort.Reverse(filtered))
+
+	// select other routes from candidates whoes expression matches rmatch
+	matchingRoutes := []Route{filtered.candidates[0].route}
+	for c := 1; c < len(filtered.candidates); c++ {
+		each := filtered.candidates[c]
+		if each.route.pathExpr.Matcher.MatchString(pathRemainder) {
+			matchingRoutes = append(matchingRoutes, each.route)
+		}
+	}
+	return matchingRoutes
+}
+
+// http://jsr311.java.net/nonav/releases/1.1/spec/spec3.html#x3-360003.7.2 (step 1)
+func (r RouterJSR311) detectDispatcher(requestPath string, dispatchers []*WebService) (*WebService, string, error) {
+	filtered := &sortableDispatcherCandidates{}
+	for _, each := range dispatchers {
+		matches := each.pathExpr.Matcher.FindStringSubmatch(requestPath)
+		if matches != nil {
+			filtered.candidates = append(filtered.candidates,
+				dispatcherCandidate{each, matches[len(matches)-1], len(matches), each.pathExpr.LiteralCount, each.pathExpr.VarCount})
+		}
+	}
+	if len(filtered.candidates) == 0 {
+		if trace {
+			traceLogger.Printf("no WebService was found to match URL path:%s\n", requestPath)
+		}
+		return nil, "", errors.New("not found")
+	}
+	sort.Sort(sort.Reverse(filtered))
+	return filtered.candidates[0].dispatcher, filtered.candidates[0].finalMatch, nil
+}
+
+// Types and functions to support the sorting of Routes
+
+type routeCandidate struct {
+	route           Route
+	matchesCount    int // the number of capturing groups
+	literalCount    int // the number of literal characters (means those not resulting from template variable substitution)
+	nonDefaultCount int // the number of capturing groups with non-default regular expressions (i.e. not ‘([^  /]+?)’)
+}
+
+func (r routeCandidate) expressionToMatch() string {
+	return r.route.pathExpr.Source
+}
+
+func (r routeCandidate) String() string {
+	return fmt.Sprintf("(m=%d,l=%d,n=%d)", r.matchesCount, r.literalCount, r.nonDefaultCount)
+}
+
+type sortableRouteCandidates struct {
+	candidates []routeCandidate
+}
+
+func (rcs *sortableRouteCandidates) Len() int {
+	return len(rcs.candidates)
+}
+func (rcs *sortableRouteCandidates) Swap(i, j int) {
+	rcs.candidates[i], rcs.candidates[j] = rcs.candidates[j], rcs.candidates[i]
+}
+func (rcs *sortableRouteCandidates) Less(i, j int) bool {
+	ci := rcs.candidates[i]
+	cj := rcs.candidates[j]
+	// primary key
+	if ci.literalCount < cj.literalCount {
+		return true
+	}
+	if ci.literalCount > cj.literalCount {
+		return false
+	}
+	// secundary key
+	if ci.matchesCount < cj.matchesCount {
+		return true
+	}
+	if ci.matchesCount > cj.matchesCount {
+		return false
+	}
+	// tertiary key
+	if ci.nonDefaultCount < cj.nonDefaultCount {
+		return true
+	}
+	if ci.nonDefaultCount > cj.nonDefaultCount {
+		return false
+	}
+	// quaternary key ("source" is i
