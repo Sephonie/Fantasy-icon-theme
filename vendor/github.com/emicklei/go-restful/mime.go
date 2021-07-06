@@ -25,4 +25,21 @@ func insertMime(l []mime, e mime) []mime {
 // sortedMimes returns a list of mime sorted (desc) by its specified quality.
 func sortedMimes(accept string) (sorted []mime) {
 	for _, each := range strings.Split(accept, ",") {
-		typeAndQuality := strings.S
+		typeAndQuality := strings.Split(strings.Trim(each, " "), ";")
+		if len(typeAndQuality) == 1 {
+			sorted = insertMime(sorted, mime{typeAndQuality[0], 1.0})
+		} else {
+			// take factor
+			parts := strings.Split(typeAndQuality[1], "=")
+			if len(parts) == 2 {
+				f, err := strconv.ParseFloat(parts[1], 64)
+				if err != nil {
+					traceLogger.Printf("unable to parse quality in %s, %v", each, err)
+				} else {
+					sorted = insertMime(sorted, mime{typeAndQuality[0], f})
+				}
+			}
+		}
+	}
+	return
+}
