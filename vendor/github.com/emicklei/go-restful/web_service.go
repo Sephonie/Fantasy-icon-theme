@@ -116,4 +116,92 @@ func (w *WebService) QueryParameter(name, description string) *Parameter {
 }
 
 // QueryParameter creates a new Parameter of kind Query for documentation purposes.
-// It is initialized
+// It is initialized as not required with string as its DataType.
+func QueryParameter(name, description string) *Parameter {
+	p := &Parameter{&ParameterData{Name: name, Description: description, Required: false, DataType: "string", CollectionFormat: CollectionFormatCSV.String()}}
+	p.beQuery()
+	return p
+}
+
+// BodyParameter creates a new Parameter of kind Body for documentation purposes.
+// It is initialized as required without a DataType.
+func (w *WebService) BodyParameter(name, description string) *Parameter {
+	return BodyParameter(name, description)
+}
+
+// BodyParameter creates a new Parameter of kind Body for documentation purposes.
+// It is initialized as required without a DataType.
+func BodyParameter(name, description string) *Parameter {
+	p := &Parameter{&ParameterData{Name: name, Description: description, Required: true}}
+	p.beBody()
+	return p
+}
+
+// HeaderParameter creates a new Parameter of kind (Http) Header for documentation purposes.
+// It is initialized as not required with string as its DataType.
+func (w *WebService) HeaderParameter(name, description string) *Parameter {
+	return HeaderParameter(name, description)
+}
+
+// HeaderParameter creates a new Parameter of kind (Http) Header for documentation purposes.
+// It is initialized as not required with string as its DataType.
+func HeaderParameter(name, description string) *Parameter {
+	p := &Parameter{&ParameterData{Name: name, Description: description, Required: false, DataType: "string"}}
+	p.beHeader()
+	return p
+}
+
+// FormParameter creates a new Parameter of kind Form (using application/x-www-form-urlencoded) for documentation purposes.
+// It is initialized as required with string as its DataType.
+func (w *WebService) FormParameter(name, description string) *Parameter {
+	return FormParameter(name, description)
+}
+
+// FormParameter creates a new Parameter of kind Form (using application/x-www-form-urlencoded) for documentation purposes.
+// It is initialized as required with string as its DataType.
+func FormParameter(name, description string) *Parameter {
+	p := &Parameter{&ParameterData{Name: name, Description: description, Required: false, DataType: "string"}}
+	p.beForm()
+	return p
+}
+
+// Route creates a new Route using the RouteBuilder and add to the ordered list of Routes.
+func (w *WebService) Route(builder *RouteBuilder) *WebService {
+	w.routesLock.Lock()
+	defer w.routesLock.Unlock()
+	builder.copyDefaults(w.produces, w.consumes)
+	w.routes = append(w.routes, builder.Build())
+	return w
+}
+
+// RemoveRoute removes the specified route, looks for something that matches 'path' and 'method'
+func (w *WebService) RemoveRoute(path, method string) error {
+	if !w.dynamicRoutes {
+		return errors.New("dynamic routes are not enabled.")
+	}
+	w.routesLock.Lock()
+	defer w.routesLock.Unlock()
+	newRoutes := make([]Route, (len(w.routes) - 1))
+	current := 0
+	for ix := range w.routes {
+		if w.routes[ix].Method == method && w.routes[ix].Path == path {
+			continue
+		}
+		newRoutes[current] = w.routes[ix]
+		current = current + 1
+	}
+	w.routes = newRoutes
+	return nil
+}
+
+// Method creates a new RouteBuilder and initialize its http method
+func (w *WebService) Method(httpMethod string) *RouteBuilder {
+	return new(RouteBuilder).typeNameHandler(w.typeNameHandleFunc).servicePath(w.rootPath).Method(httpMethod)
+}
+
+// Produces specifies that this WebService can produce one or more MIME types.
+// Http requests must have one of these values set for the Accept header.
+func (w *WebService) Produces(contentTypes ...string) *WebService {
+	w.produces = contentTypes
+	return w
+}
