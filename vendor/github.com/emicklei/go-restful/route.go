@@ -64,4 +64,86 @@ func (r *Route) wrapRequestResponse(httpWriter http.ResponseWriter, httpRequest 
 }
 
 // dispatchWithFilters call the function after passing through its own filters
-func (r *Rou
+func (r *Route) dispatchWithFilters(wrappedRequest *Request, wrappedResponse *Response) {
+	if len(r.Filters) > 0 {
+		chain := FilterChain{Filters: r.Filters, Target: r.Function}
+		chain.ProcessFilter(wrappedRequest, wrappedResponse)
+	} else {
+		// unfiltered
+		r.Function(wrappedRequest, wrappedResponse)
+	}
+}
+
+// Return whether the mimeType matches to what this Route can produce.
+func (r Route) matchesAccept(mimeTypesWithQuality string) bool {
+	parts := strings.Split(mimeTypesWithQuality, ",")
+	for _, each := range parts {
+		var withoutQuality string
+		if strings.Contains(each, ";") {
+			withoutQuality = strings.Split(each, ";")[0]
+		} else {
+			withoutQuality = each
+		}
+		// trim before compare
+		withoutQuality = strings.Trim(withoutQuality, " ")
+		if withoutQuality == "*/*" {
+			return true
+		}
+		for _, producibleType := range r.Produces {
+			if producibleType == "*/*" || producibleType == withoutQuality {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Return whether this Route can consume content with a type specified by mimeTypes (can be empty).
+func (r Route) matchesContentType(mimeTypes string) bool {
+
+	if len(r.Consumes) == 0 {
+		// did not specify what it can consume ;  any media type (“*/*”) is assumed
+		return true
+	}
+
+	if len(mimeTypes) == 0 {
+		// idempotent methods with (most-likely or guaranteed) empty content match missing Content-Type
+		m := r.Method
+		if m == "GET" || m == "HEAD" || m == "OPTIONS" || m == "DELETE" || m == "TRACE" {
+			return true
+		}
+		// proceed with default
+		mimeTypes = MIME_OCTET
+	}
+
+	parts := strings.Split(mimeTypes, ",")
+	for _, each := range parts {
+		var contentType string
+		if strings.Contains(each, ";") {
+			contentType = strings.Split(each, ";")[0]
+		} else {
+			contentType = each
+		}
+		// trim before compare
+		contentType = strings.Trim(contentType, " ")
+		for _, consumeableType := range r.Consumes {
+			if consumeableType == "*/*" || consumeableType == contentType {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Tokenize an URL path using the slash separator ; the result does not have empty tokens
+func tokenizePath(path string) []string {
+	if "/" == path {
+		return []string{}
+	}
+	return strings.Split(strings.Trim(path, "/"), "/")
+}
+
+// for debugging
+func (r Route) String() string {
+	return r.Method + " " + r.Path
+}
