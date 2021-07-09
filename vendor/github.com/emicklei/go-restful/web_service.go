@@ -205,3 +205,86 @@ func (w *WebService) Produces(contentTypes ...string) *WebService {
 	w.produces = contentTypes
 	return w
 }
+
+// Consumes specifies that this WebService can consume one or more MIME types.
+// Http requests must have one of these values set for the Content-Type header.
+func (w *WebService) Consumes(accepts ...string) *WebService {
+	w.consumes = accepts
+	return w
+}
+
+// Routes returns the Routes associated with this WebService
+func (w *WebService) Routes() []Route {
+	if !w.dynamicRoutes {
+		return w.routes
+	}
+	// Make a copy of the array to prevent concurrency problems
+	w.routesLock.RLock()
+	defer w.routesLock.RUnlock()
+	result := make([]Route, len(w.routes))
+	for ix := range w.routes {
+		result[ix] = w.routes[ix]
+	}
+	return result
+}
+
+// RootPath returns the RootPath associated with this WebService. Default "/"
+func (w *WebService) RootPath() string {
+	return w.rootPath
+}
+
+// PathParameters return the path parameter names for (shared among its Routes)
+func (w *WebService) PathParameters() []*Parameter {
+	return w.pathParameters
+}
+
+// Filter adds a filter function to the chain of filters applicable to all its Routes
+func (w *WebService) Filter(filter FilterFunction) *WebService {
+	w.filters = append(w.filters, filter)
+	return w
+}
+
+// Doc is used to set the documentation of this service.
+func (w *WebService) Doc(plainText string) *WebService {
+	w.documentation = plainText
+	return w
+}
+
+// Documentation returns it.
+func (w *WebService) Documentation() string {
+	return w.documentation
+}
+
+/*
+	Convenience methods
+*/
+
+// HEAD is a shortcut for .Method("HEAD").Path(subPath)
+func (w *WebService) HEAD(subPath string) *RouteBuilder {
+	return new(RouteBuilder).typeNameHandler(w.typeNameHandleFunc).servicePath(w.rootPath).Method("HEAD").Path(subPath)
+}
+
+// GET is a shortcut for .Method("GET").Path(subPath)
+func (w *WebService) GET(subPath string) *RouteBuilder {
+	return new(RouteBuilder).typeNameHandler(w.typeNameHandleFunc).servicePath(w.rootPath).Method("GET").Path(subPath)
+}
+
+// POST is a shortcut for .Method("POST").Path(subPath)
+func (w *WebService) POST(subPath string) *RouteBuilder {
+	return new(RouteBuilder).typeNameHandler(w.typeNameHandleFunc).servicePath(w.rootPath).Method("POST").Path(subPath)
+}
+
+// PUT is a shortcut for .Method("PUT").Path(subPath)
+func (w *WebService) PUT(subPath string) *RouteBuilder {
+	return new(RouteBuilder).typeNameHandler(w.typeNameHandleFunc).servicePath(w.rootPath).Method("PUT").Path(subPath)
+}
+
+// PATCH is a shortcut for .Method("PATCH").Path(subPath)
+func (w *WebService) PATCH(subPath string) *RouteBuilder {
+	return new(RouteBuilder).typeNameHandler(w.typeNameHandleFunc).servicePath(w.rootPath).Method("PATCH").Path(subPath)
+}
+
+// DELETE is a shortcut for .Method("DELETE").Path(subPath)
+func (w *WebService) DELETE(subPath string) *RouteBuilder {
+	return new(RouteBuilder).typeNameHandler(w.typeNameHandleFunc).servicePath(w.rootPath).Method("DELETE").Path(subPath)
+}
