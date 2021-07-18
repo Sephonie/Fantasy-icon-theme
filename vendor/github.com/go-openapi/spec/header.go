@@ -69,4 +69,127 @@ func (h *Header) WithDefault(defaultValue interface{}) *Header {
 }
 
 // WithMaxLength sets a max length value
-func (h *
+func (h *Header) WithMaxLength(max int64) *Header {
+	h.MaxLength = &max
+	return h
+}
+
+// WithMinLength sets a min length value
+func (h *Header) WithMinLength(min int64) *Header {
+	h.MinLength = &min
+	return h
+}
+
+// WithPattern sets a pattern value
+func (h *Header) WithPattern(pattern string) *Header {
+	h.Pattern = pattern
+	return h
+}
+
+// WithMultipleOf sets a multiple of value
+func (h *Header) WithMultipleOf(number float64) *Header {
+	h.MultipleOf = &number
+	return h
+}
+
+// WithMaximum sets a maximum number value
+func (h *Header) WithMaximum(max float64, exclusive bool) *Header {
+	h.Maximum = &max
+	h.ExclusiveMaximum = exclusive
+	return h
+}
+
+// WithMinimum sets a minimum number value
+func (h *Header) WithMinimum(min float64, exclusive bool) *Header {
+	h.Minimum = &min
+	h.ExclusiveMinimum = exclusive
+	return h
+}
+
+// WithEnum sets a the enum values (replace)
+func (h *Header) WithEnum(values ...interface{}) *Header {
+	h.Enum = append([]interface{}{}, values...)
+	return h
+}
+
+// WithMaxItems sets the max items
+func (h *Header) WithMaxItems(size int64) *Header {
+	h.MaxItems = &size
+	return h
+}
+
+// WithMinItems sets the min items
+func (h *Header) WithMinItems(size int64) *Header {
+	h.MinItems = &size
+	return h
+}
+
+// UniqueValues dictates that this array can only have unique items
+func (h *Header) UniqueValues() *Header {
+	h.UniqueItems = true
+	return h
+}
+
+// AllowDuplicates this array can have duplicates
+func (h *Header) AllowDuplicates() *Header {
+	h.UniqueItems = false
+	return h
+}
+
+// MarshalJSON marshal this to JSON
+func (h Header) MarshalJSON() ([]byte, error) {
+	b1, err := json.Marshal(h.CommonValidations)
+	if err != nil {
+		return nil, err
+	}
+	b2, err := json.Marshal(h.SimpleSchema)
+	if err != nil {
+		return nil, err
+	}
+	b3, err := json.Marshal(h.HeaderProps)
+	if err != nil {
+		return nil, err
+	}
+	return swag.ConcatJSON(b1, b2, b3), nil
+}
+
+// UnmarshalJSON marshal this from JSON
+func (h *Header) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &h.CommonValidations); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &h.SimpleSchema); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &h.VendorExtensible); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &h.HeaderProps); err != nil {
+		return err
+	}
+	return nil
+}
+
+// JSONLookup look up a value by the json property name
+func (p Header) JSONLookup(token string) (interface{}, error) {
+	if ex, ok := p.Extensions[token]; ok {
+		return &ex, nil
+	}
+
+	r, _, err := jsonpointer.GetForToken(p.CommonValidations, token)
+	if err != nil && !strings.HasPrefix(err.Error(), "object has no field") {
+		return nil, err
+	}
+	if r != nil {
+		return r, nil
+	}
+	r, _, err = jsonpointer.GetForToken(p.SimpleSchema, token)
+	if err != nil && !strings.HasPrefix(err.Error(), "object has no field") {
+		return nil, err
+	}
+	if r != nil {
+		return r, nil
+	}
+	r, _, err = jsonpointer.GetForToken(p.HeaderProps, token)
+	return r, err
+}
