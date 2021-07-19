@@ -135,4 +135,33 @@ func (r Ref) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("{}"), nil
 	}
-	v := map[stri
+	v := map[string]interface{}{"$ref": str}
+	return json.Marshal(v)
+}
+
+// UnmarshalJSON unmarshals this ref from a JSON object
+func (r *Ref) UnmarshalJSON(d []byte) error {
+	var v map[string]interface{}
+	if err := json.Unmarshal(d, &v); err != nil {
+		return err
+	}
+	return r.fromMap(v)
+}
+
+func (r *Ref) fromMap(v map[string]interface{}) error {
+	if v == nil {
+		return nil
+	}
+
+	if vv, ok := v["$ref"]; ok {
+		if str, ok := vv.(string); ok {
+			ref, err := jsonreference.New(str)
+			if err != nil {
+				return err
+			}
+			*r = Ref{Ref: ref}
+		}
+	}
+
+	return nil
+}
