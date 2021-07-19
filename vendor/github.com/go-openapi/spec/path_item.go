@@ -72,4 +72,19 @@ func (p *PathItem) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON converts this items object to JSON
-func (p PathItem) MarshalJSON() ([]byte, er
+func (p PathItem) MarshalJSON() ([]byte, error) {
+	b3, err := json.Marshal(p.Refable)
+	if err != nil {
+		return nil, err
+	}
+	b4, err := json.Marshal(p.VendorExtensible)
+	if err != nil {
+		return nil, err
+	}
+	b5, err := json.Marshal(p.PathItemProps)
+	if err != nil {
+		return nil, err
+	}
+	concated := swag.ConcatJSON(b3, b4, b5)
+	return concated, nil
+}
