@@ -98,4 +98,153 @@ func ConcatJSON(blobs ...[]byte) []byte {
 	for blobs[last] == nil || bytes.Equal(blobs[last], nullJSON) {
 		// strips trailing null objects
 		last = last - 1
-		if l
+		if last < 0 {
+			// there was nothing but "null"s or nil...
+			return nil
+		}
+	}
+	if last == 0 {
+		return blobs[0]
+	}
+
+	var opening, closing byte
+	var idx, a int
+	buf := bytes.NewBuffer(nil)
+
+	for i, b := range blobs[:last+1] {
+		if b == nil || bytes.Equal(b, nullJSON) {
+			// a null object is in the list: skip it
+			continue
+		}
+		if len(b) > 0 && opening == 0 { // is this an array or an object?
+			opening, closing = b[0], closers[b[0]]
+		}
+
+		if opening != '{' && opening != '[' {
+			continue // don't know how to concatenate non container objects
+		}
+
+		if len(b) < 3 { // yep empty but also the last one, so closing this thing
+			if i == last && a > 0 {
+				if err := buf.WriteByte(closing); err != nil {
+					log.Println(err)
+				}
+			}
+			continue
+		}
+
+		idx = 0
+		if a > 0 { // we need to join with a comma for everything beyond the first non-empty item
+			if err := buf.WriteByte(comma); err != nil {
+				log.Println(err)
+			}
+			idx = 1 // this is not the first or the last so we want to drop the leading bracket
+		}
+
+		if i != last { // not the last one, strip brackets
+			if _, err := buf.Write(b[idx : len(b)-1]); err != nil {
+				log.Println(err)
+			}
+		} else { // last one, strip only the leading bracket
+			if _, err := buf.Write(b[idx:]); err != nil {
+				log.Println(err)
+			}
+		}
+		a++
+	}
+	// somehow it ended up being empty, so provide a default value
+	if buf.Len() == 0 {
+		if err := buf.WriteByte(opening); err != nil {
+			log.Println(err)
+		}
+		if err := buf.WriteByte(closing); err != nil {
+			log.Println(err)
+		}
+	}
+	return buf.Bytes()
+}
+
+// ToDynamicJSON turns an object into a properly JSON typed structure
+func ToDynamicJSON(data interface{}) interface{} {
+	// TODO: convert straight to a json typed map (mergo + iterate?)
+	b, err := json.Marshal(data)
+	if err != nil {
+		log.Println(err)
+	}
+	var res interface{}
+	if err := json.Unmarshal(b, &res); err != nil {
+		log.Println(err)
+	}
+	return res
+}
+
+// FromDynamicJSON turns an object into a properly JSON typed structure
+func FromDynamicJSON(data, target interface{}) error {
+	b, err := json.Marshal(data)
+	if err != nil {
+		log.Println(err)
+	}
+	return json.Unmarshal(b, target)
+}
+
+// NameProvider represents an object capabale of translating from go property names
+// to json property names
+// This type is thread-safe.
+type NameProvider struct {
+	lock  *sync.Mutex
+	index map[reflect.Type]nameIndex
+}
+
+type nameIndex struct {
+	jsonNames map[string]string
+	goNames   map[string]string
+}
+
+// NewNameProvider creates a new name provider
+func NewNameProvider() *NameProvider {
+	return &NameProvider{
+		lock:  &sync.Mutex{},
+		index: make(map[reflect.Type]nameIndex),
+	}
+}
+
+func buildnameIndex(tpe reflect.Type, idx, reverseIdx map[string]string) {
+	for i := 0; i < tpe.NumField(); i++ {
+		targetDes := tpe.Field(i)
+
+		if targetDes.PkgPath != "" { // unexported
+			continue
+		}
+
+		if targetDes.Anonymous { // walk embedded structures tree down first
+			buildnameIndex(targetDes.Type, idx, reverseIdx)
+			continue
+		}
+
+		if tag := targetDes.Tag.Get("json"); tag != "" {
+
+			parts := strings.Split(tag, ",")
+			if len(parts) == 0 {
+				continue
+			}
+
+			nm := parts[0]
+			if nm == "-" {
+				continue
+			}
+			if nm == "" { // empty string means we want to use the Go name
+				nm = targetDes.Name
+			}
+
+			idx[nm] = targetDes.Name
+			reverseIdx[targetDes.Name] = nm
+		}
+	}
+}
+
+func newNameIndex(tpe reflect.Type) nameIndex {
+	var idx = make(map[string]string, tpe.NumField())
+	var reverseIdx = make(map[string]string, tpe.NumField())
+
+	buildnameIndex(tpe, idx, reverseIdx)
+	r
