@@ -247,4 +247,64 @@ func newNameIndex(tpe reflect.Type) nameIndex {
 	var reverseIdx = make(map[string]string, tpe.NumField())
 
 	buildnameIndex(tpe, idx, reverseIdx)
-	r
+	return nameIndex{jsonNames: idx, goNames: reverseIdx}
+}
+
+// GetJSONNames gets all the json property names for a type
+func (n *NameProvider) GetJSONNames(subject interface{}) []string {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	tpe := reflect.Indirect(reflect.ValueOf(subject)).Type()
+	names, ok := n.index[tpe]
+	if !ok {
+		names = n.makeNameIndex(tpe)
+	}
+
+	var res []string
+	for k := range names.jsonNames {
+		res = append(res, k)
+	}
+	return res
+}
+
+// GetJSONName gets the json name for a go property name
+func (n *NameProvider) GetJSONName(subject interface{}, name string) (string, bool) {
+	tpe := reflect.Indirect(reflect.ValueOf(subject)).Type()
+	return n.GetJSONNameForType(tpe, name)
+}
+
+// GetJSONNameForType gets the json name for a go property name on a given type
+func (n *NameProvider) GetJSONNameForType(tpe reflect.Type, name string) (string, bool) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	names, ok := n.index[tpe]
+	if !ok {
+		names = n.makeNameIndex(tpe)
+	}
+	nme, ok := names.goNames[name]
+	return nme, ok
+}
+
+func (n *NameProvider) makeNameIndex(tpe reflect.Type) nameIndex {
+	names := newNameIndex(tpe)
+	n.index[tpe] = names
+	return names
+}
+
+// GetGoName gets the go name for a json property name
+func (n *NameProvider) GetGoName(subject interface{}, name string) (string, bool) {
+	tpe := reflect.Indirect(reflect.ValueOf(subject)).Type()
+	return n.GetGoNameForType(tpe, name)
+}
+
+// GetGoNameForType gets the go name for a given type for a json property name
+func (n *NameProvider) GetGoNameForType(tpe reflect.Type, name string) (string, bool) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	names, ok := n.index[tpe]
+	if !ok {
+		names = n.makeNameIndex(tpe)
+	}
+	nme, ok := names.jsonNames[name]
+	return nme, ok
+}
