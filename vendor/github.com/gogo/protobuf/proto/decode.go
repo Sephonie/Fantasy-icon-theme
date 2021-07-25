@@ -892,3 +892,88 @@ func (o *Buffer) dec_new_map(p *Properties, base structPointer) error {
 
 // Decode a group.
 func (o *Buffer) dec_struct_group(p *Properties, base structPointer) error {
+	bas := structPointer_GetStructPointer(base, p.field)
+	if structPointer_IsNil(bas) {
+		// allocate new nested message
+		bas = toStructPointer(reflect.New(p.stype))
+		structPointer_SetStructPointer(base, p.field, bas)
+	}
+	return o.unmarshalType(p.stype, p.sprop, true, bas)
+}
+
+// Decode an embedded message.
+func (o *Buffer) dec_struct_message(p *Properties, base structPointer) (err error) {
+	raw, e := o.DecodeRawBytes(false)
+	if e != nil {
+		return e
+	}
+
+	bas := structPointer_GetStructPointer(base, p.field)
+	if structPointer_IsNil(bas) {
+		// allocate new nested message
+		bas = toStructPointer(reflect.New(p.stype))
+		structPointer_SetStructPointer(base, p.field, bas)
+	}
+
+	// If the object can unmarshal itself, let it.
+	if p.isUnmarshaler {
+		iv := structPointer_Interface(bas, p.stype)
+		return iv.(Unmarshaler).Unmarshal(raw)
+	}
+
+	obuf := o.buf
+	oi := o.index
+	o.buf = raw
+	o.index = 0
+
+	err = o.unmarshalType(p.stype, p.sprop, false, bas)
+	o.buf = obuf
+	o.index = oi
+
+	return err
+}
+
+// Decode a slice of embedded messages.
+func (o *Buffer) dec_slice_struct_message(p *Properties, base structPointer) error {
+	return o.dec_slice_struct(p, false, base)
+}
+
+// Decode a slice of embedded groups.
+func (o *Buffer) dec_slice_struct_group(p *Properties, base structPointer) error {
+	return o.dec_slice_struct(p, true, base)
+}
+
+// Decode a slice of structs ([]*struct).
+func (o *Buffer) dec_slice_struct(p *Properties, is_group bool, base structPointer) error {
+	v := reflect.New(p.stype)
+	bas := toStructPointer(v)
+	structPointer_StructPointerSlice(base, p.field).Append(bas)
+
+	if is_group {
+		err := o.unmarshalType(p.stype, p.sprop, is_group, bas)
+		return err
+	}
+
+	raw, err := o.DecodeRawBytes(false)
+	if err != nil {
+		return err
+	}
+
+	// If the object can unmarshal itself, let it.
+	if p.isUnmarshaler {
+		iv := v.Interface()
+		return iv.(Unmarshaler).Unmarshal(raw)
+	}
+
+	obuf := o.buf
+	oi := o.index
+	o.buf = raw
+	o.index = 0
+
+	err = o.unmarshalType(p.stype, p.sprop, is_group, bas)
+
+	o.buf = obuf
+	o.index = oi
+
+	return err
+}
