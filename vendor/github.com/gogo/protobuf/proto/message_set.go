@@ -236,4 +236,76 @@ func MarshalMessageSetJSON(exts interface{}) ([]byte, error) {
 	switch exts := exts.(type) {
 	case *XXX_InternalExtensions:
 		m, _ = exts.extensionsRead()
-	case map[int32]Extensi
+	case map[int32]Extension:
+		m = exts
+	default:
+		return nil, errors.New("proto: not an extension map")
+	}
+	var b bytes.Buffer
+	b.WriteByte('{')
+
+	// Process the map in key order for deterministic output.
+	ids := make([]int32, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Sort(int32Slice(ids)) // int32Slice defined in text.go
+
+	for i, id := range ids {
+		ext := m[id]
+		if i > 0 {
+			b.WriteByte(',')
+		}
+
+		msd, ok := messageSetMap[id]
+		if !ok {
+			// Unknown type; we can't render it, so skip it.
+			continue
+		}
+		fmt.Fprintf(&b, `"[%s]":`, msd.name)
+
+		x := ext.value
+		if x == nil {
+			x = reflect.New(msd.t.Elem()).Interface()
+			if err := Unmarshal(ext.enc, x.(Message)); err != nil {
+				return nil, err
+			}
+		}
+		d, err := json.Marshal(x)
+		if err != nil {
+			return nil, err
+		}
+		b.Write(d)
+	}
+	b.WriteByte('}')
+	return b.Bytes(), nil
+}
+
+// UnmarshalMessageSetJSON decodes the extension map encoded in buf in JSON format.
+// It is called by generated UnmarshalJSON methods on protocol buffer messages with the message_set_wire_format option.
+func UnmarshalMessageSetJSON(buf []byte, exts interface{}) error {
+	// Common-case fast path.
+	if len(buf) == 0 || bytes.Equal(buf, []byte("{}")) {
+		return nil
+	}
+
+	// This is fairly tricky, and it's not clear that it is needed.
+	return errors.New("TODO: UnmarshalMessageSetJSON not yet implemented")
+}
+
+// A global registry of types that can be used in a MessageSet.
+
+var messageSetMap = make(map[int32]messageSetDesc)
+
+type messageSetDesc struct {
+	t    reflect.Type // pointer to struct
+	name string
+}
+
+// RegisterMessageSetType is called from the generated code.
+func RegisterMessageSetType(m Message, fieldNum int32, name string) {
+	messageSetMap[fieldNum] = messageSetDesc{
+		t:    reflect.TypeOf(m),
+		name: name,
+	}
+}
