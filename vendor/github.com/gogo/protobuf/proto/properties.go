@@ -858,3 +858,115 @@ func getPropertiesLocked(t reflect.Type) *StructProperties {
 	reqCount := 0
 	prop.decoderOrigNames = make(map[string]int)
 	for i, p := range prop.Prop {
+		if strings.HasPrefix(p.Name, "XXX_") {
+			// Internal fields should not appear in tags/origNames maps.
+			// They are handled specially when encoding and decoding.
+			continue
+		}
+		if p.Required {
+			reqCount++
+		}
+		prop.decoderTags.put(p.Tag, i)
+		prop.decoderOrigNames[p.OrigName] = i
+	}
+	prop.reqCount = reqCount
+
+	return prop
+}
+
+// Return the Properties object for the x[0]'th field of the structure.
+func propByIndex(t reflect.Type, x []int) *Properties {
+	if len(x) != 1 {
+		fmt.Fprintf(os.Stderr, "proto: field index dimension %d (not 1) for type %s\n", len(x), t)
+		return nil
+	}
+	prop := GetProperties(t)
+	return prop.Prop[x[0]]
+}
+
+// Get the address and type of a pointer to a struct from an interface.
+func getbase(pb Message) (t reflect.Type, b structPointer, err error) {
+	if pb == nil {
+		err = ErrNil
+		return
+	}
+	// get the reflect type of the pointer to the struct.
+	t = reflect.TypeOf(pb)
+	// get the address of the struct.
+	value := reflect.ValueOf(pb)
+	b = toStructPointer(value)
+	return
+}
+
+// A global registry of enum types.
+// The generated code will register the generated maps by calling RegisterEnum.
+
+var enumValueMaps = make(map[string]map[string]int32)
+var enumStringMaps = make(map[string]map[int32]string)
+
+// RegisterEnum is called from the generated code to install the enum descriptor
+// maps into the global table to aid parsing text format protocol buffers.
+func RegisterEnum(typeName string, unusedNameMap map[int32]string, valueMap map[string]int32) {
+	if _, ok := enumValueMaps[typeName]; ok {
+		panic("proto: duplicate enum registered: " + typeName)
+	}
+	enumValueMaps[typeName] = valueMap
+	if _, ok := enumStringMaps[typeName]; ok {
+		panic("proto: duplicate enum registered: " + typeName)
+	}
+	enumStringMaps[typeName] = unusedNameMap
+}
+
+// EnumValueMap returns the mapping from names to integers of the
+// enum type enumType, or a nil if not found.
+func EnumValueMap(enumType string) map[string]int32 {
+	return enumValueMaps[enumType]
+}
+
+// A registry of all linked message types.
+// The string is a fully-qualified proto name ("pkg.Message").
+var (
+	protoTypes    = make(map[string]reflect.Type)
+	revProtoTypes = make(map[reflect.Type]string)
+)
+
+// RegisterType is called from generated code and maps from the fully qualified
+// proto name to the type (pointer to struct) of the protocol buffer.
+func RegisterType(x Message, name string) {
+	if _, ok := protoTypes[name]; ok {
+		// TODO: Some day, make this a panic.
+		log.Printf("proto: duplicate proto type registered: %s", name)
+		return
+	}
+	t := reflect.TypeOf(x)
+	protoTypes[name] = t
+	revProtoTypes[t] = name
+}
+
+// MessageName returns the fully-qualified proto name for the given message type.
+func MessageName(x Message) string {
+	type xname interface {
+		XXX_MessageName() string
+	}
+	if m, ok := x.(xname); ok {
+		return m.XXX_MessageName()
+	}
+	return revProtoTypes[reflect.TypeOf(x)]
+}
+
+// MessageType returns the message type (pointer to struct) for a named message.
+func MessageType(name string) reflect.Type { return protoTypes[name] }
+
+// A registry of all linked proto files.
+var (
+	protoFiles = make(map[string][]byte) // file name => fileDescriptor
+)
+
+// RegisterFile is called from generated code and maps from the
+// full file name of a .proto file to its compressed FileDescriptorProto.
+func RegisterFile(filename string, fileDescriptor []byte) {
+	protoFiles[filename] = fileDescriptor
+}
+
+// FileDescriptor returns the compressed FileDescriptorProto for a .proto file.
+func FileDescriptor(filename string) []byte { return protoFiles[filename] }
