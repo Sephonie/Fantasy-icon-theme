@@ -1,6 +1,6 @@
 // Protocol Buffers for Go with Gadgets
 //
-// Copyright (c) 2016, The GoGo Authors. All rights reserved.
+// Copyright (c) 2013, The GoGo Authors. All rights reserved.
 // http://github.com/gogo/protobuf
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,60 +26,16 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// +build appengine js
+// +build !appengine,!js
+
+// This file contains the implementation of the proto field accesses using package unsafe.
 
 package proto
 
 import (
 	"reflect"
+	"unsafe"
 )
 
-func structPointer_FieldPointer(p structPointer, f field) structPointer {
-	panic("not implemented")
-}
-
-func appendStructPointer(base structPointer, f field, typ reflect.Type) structPointer {
-	panic("not implemented")
-}
-
 func structPointer_InterfaceAt(p structPointer, f field, t reflect.Type) interface{} {
-	panic("not implemented")
-}
-
-func structPointer_InterfaceRef(p structPointer, f field, t reflect.Type) interface{} {
-	panic("not implemented")
-}
-
-func structPointer_GetRefStructPointer(p structPointer, f field) structPointer {
-	panic("not implemented")
-}
-
-func structPointer_Add(p structPointer, size field) structPointer {
-	panic("not implemented")
-}
-
-func structPointer_Len(p structPointer, f field) int {
-	panic("not implemented")
-}
-
-func structPointer_GetSliceHeader(p structPointer, f field) *reflect.SliceHeader {
-	panic("not implemented")
-}
-
-func structPointer_Copy(oldptr structPointer, newptr structPointer, size int) {
-	panic("not implemented")
-}
-
-func structPointer_StructRefSlice(p structPointer, f field, size uintptr) *structRefSlice {
-	panic("not implemented")
-}
-
-type structRefSlice struct{}
-
-func (v *structRefSlice) Len() int {
-	panic("not implemented")
-}
-
-func (v *structRefSlice) Index(i int) structPointer {
-	panic("not implemented")
-}
+	point := unsafe.Pointer(uintpt
