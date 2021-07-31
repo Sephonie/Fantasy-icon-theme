@@ -136,4 +136,148 @@ var GoTest_KIND_value = map[string]int32{
 	"STRING":      6,
 	"TIME":        7,
 	"TUPLE":       8,
-	"ARRAY":   
+	"ARRAY":       9,
+	"MAP":         10,
+	"TABLE":       11,
+	"FUNCTION":    12,
+}
+
+func (x GoTest_KIND) Enum() *GoTest_KIND {
+	p := new(GoTest_KIND)
+	*p = x
+	return p
+}
+func (x GoTest_KIND) String() string {
+	return proto.EnumName(GoTest_KIND_name, int32(x))
+}
+func (x *GoTest_KIND) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(GoTest_KIND_value, data, "GoTest_KIND")
+	if err != nil {
+		return err
+	}
+	*x = GoTest_KIND(value)
+	return nil
+}
+func (GoTest_KIND) EnumDescriptor() ([]byte, []int) { return fileDescriptorTest, []int{2, 0} }
+
+type MyMessage_Color int32
+
+const (
+	MyMessage_RED   MyMessage_Color = 0
+	MyMessage_GREEN MyMessage_Color = 1
+	MyMessage_BLUE  MyMessage_Color = 2
+)
+
+var MyMessage_Color_name = map[int32]string{
+	0: "RED",
+	1: "GREEN",
+	2: "BLUE",
+}
+var MyMessage_Color_value = map[string]int32{
+	"RED":   0,
+	"GREEN": 1,
+	"BLUE":  2,
+}
+
+func (x MyMessage_Color) Enum() *MyMessage_Color {
+	p := new(MyMessage_Color)
+	*p = x
+	return p
+}
+func (x MyMessage_Color) String() string {
+	return proto.EnumName(MyMessage_Color_name, int32(x))
+}
+func (x *MyMessage_Color) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(MyMessage_Color_value, data, "MyMessage_Color")
+	if err != nil {
+		return err
+	}
+	*x = MyMessage_Color(value)
+	return nil
+}
+func (MyMessage_Color) EnumDescriptor() ([]byte, []int) { return fileDescriptorTest, []int{13, 0} }
+
+type DefaultsMessage_DefaultsEnum int32
+
+const (
+	DefaultsMessage_ZERO DefaultsMessage_DefaultsEnum = 0
+	DefaultsMessage_ONE  DefaultsMessage_DefaultsEnum = 1
+	DefaultsMessage_TWO  DefaultsMessage_DefaultsEnum = 2
+)
+
+var DefaultsMessage_DefaultsEnum_name = map[int32]string{
+	0: "ZERO",
+	1: "ONE",
+	2: "TWO",
+}
+var DefaultsMessage_DefaultsEnum_value = map[string]int32{
+	"ZERO": 0,
+	"ONE":  1,
+	"TWO":  2,
+}
+
+func (x DefaultsMessage_DefaultsEnum) Enum() *DefaultsMessage_DefaultsEnum {
+	p := new(DefaultsMessage_DefaultsEnum)
+	*p = x
+	return p
+}
+func (x DefaultsMessage_DefaultsEnum) String() string {
+	return proto.EnumName(DefaultsMessage_DefaultsEnum_name, int32(x))
+}
+func (x *DefaultsMessage_DefaultsEnum) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(DefaultsMessage_DefaultsEnum_value, data, "DefaultsMessage_DefaultsEnum")
+	if err != nil {
+		return err
+	}
+	*x = DefaultsMessage_DefaultsEnum(value)
+	return nil
+}
+func (DefaultsMessage_DefaultsEnum) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptorTest, []int{16, 0}
+}
+
+type Defaults_Color int32
+
+const (
+	Defaults_RED   Defaults_Color = 0
+	Defaults_GREEN Defaults_Color = 1
+	Defaults_BLUE  Defaults_Color = 2
+)
+
+var Defaults_Color_name = map[int32]string{
+	0: "RED",
+	1: "GREEN",
+	2: "BLUE",
+}
+var Defaults_Color_value = map[string]int32{
+	"RED":   0,
+	"GREEN": 1,
+	"BLUE":  2,
+}
+
+func (x Defaults_Color) Enum() *Defaults_Color {
+	p := new(Defaults_Color)
+	*p = x
+	return p
+}
+func (x Defaults_Color) String() string {
+	return proto.EnumName(Defaults_Color_name, int32(x))
+}
+func (x *Defaults_Color) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(Defaults_Color_value, data, "Defaults_Color")
+	if err != nil {
+		return err
+	}
+	*x = Defaults_Color(value)
+	return nil
+}
+func (Defaults_Color) EnumDescriptor() ([]byte, []int) { return fileDescriptorTest, []int{21, 0} }
+
+type RepeatedEnum_Color int32
+
+const (
+	RepeatedEnum_RED RepeatedEnum_Color = 1
+)
+
+var RepeatedEnum_Color_name = map[int32]string{
+	1: "
