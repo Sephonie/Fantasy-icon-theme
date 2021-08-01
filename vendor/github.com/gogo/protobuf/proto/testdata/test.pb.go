@@ -280,4 +280,86 @@ const (
 )
 
 var RepeatedEnum_Color_name = map[int32]string{
-	1: "
+	1: "RED",
+}
+var RepeatedEnum_Color_value = map[string]int32{
+	"RED": 1,
+}
+
+func (x RepeatedEnum_Color) Enum() *RepeatedEnum_Color {
+	p := new(RepeatedEnum_Color)
+	*p = x
+	return p
+}
+func (x RepeatedEnum_Color) String() string {
+	return proto.EnumName(RepeatedEnum_Color_name, int32(x))
+}
+func (x *RepeatedEnum_Color) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(RepeatedEnum_Color_value, data, "RepeatedEnum_Color")
+	if err != nil {
+		return err
+	}
+	*x = RepeatedEnum_Color(value)
+	return nil
+}
+func (RepeatedEnum_Color) EnumDescriptor() ([]byte, []int) { return fileDescriptorTest, []int{23, 0} }
+
+type GoEnum struct {
+	Foo              *FOO   `protobuf:"varint,1,req,name=foo,enum=testdata.FOO" json:"foo,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *GoEnum) Reset()                    { *m = GoEnum{} }
+func (m *GoEnum) String() string            { return proto.CompactTextString(m) }
+func (*GoEnum) ProtoMessage()               {}
+func (*GoEnum) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{0} }
+
+func (m *GoEnum) GetFoo() FOO {
+	if m != nil && m.Foo != nil {
+		return *m.Foo
+	}
+	return FOO_FOO1
+}
+
+type GoTestField struct {
+	Label            *string `protobuf:"bytes,1,req,name=Label" json:"Label,omitempty"`
+	Type             *string `protobuf:"bytes,2,req,name=Type" json:"Type,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *GoTestField) Reset()                    { *m = GoTestField{} }
+func (m *GoTestField) String() string            { return proto.CompactTextString(m) }
+func (*GoTestField) ProtoMessage()               {}
+func (*GoTestField) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{1} }
+
+func (m *GoTestField) GetLabel() string {
+	if m != nil && m.Label != nil {
+		return *m.Label
+	}
+	return ""
+}
+
+func (m *GoTestField) GetType() string {
+	if m != nil && m.Type != nil {
+		return *m.Type
+	}
+	return ""
+}
+
+type GoTest struct {
+	// Some typical parameters
+	Kind  *GoTest_KIND `protobuf:"varint,1,req,name=Kind,enum=testdata.GoTest_KIND" json:"Kind,omitempty"`
+	Table *string      `protobuf:"bytes,2,opt,name=Table" json:"Table,omitempty"`
+	Param *int32       `protobuf:"varint,3,opt,name=Param" json:"Param,omitempty"`
+	// Required, repeated and optional foreign fields.
+	RequiredField *GoTestField   `protobuf:"bytes,4,req,name=RequiredField" json:"RequiredField,omitempty"`
+	RepeatedField []*GoTestField `protobuf:"bytes,5,rep,name=RepeatedField" json:"RepeatedField,omitempty"`
+	OptionalField *GoTestField   `protobuf:"bytes,6,opt,name=OptionalField" json:"OptionalField,omitempty"`
+	// Required fields of all basic types
+	F_BoolRequired    *bool    `protobuf:"varint,10,req,name=F_Bool_required,json=FBoolRequired" json:"F_Bool_required,omitempty"`
+	F_Int32Required   *int32   `protobuf:"varint,11,req,name=F_Int32_required,json=FInt32Required" json:"F_Int32_required,omitempty"`
+	F_Int64Required   *int64   `protobuf:"varint,12,req,name=F_Int64_required,json=FInt64Required" json:"F_Int64_required,omitempty"`
+	F_Fixed32Required *uint32  `protobuf:"fixed32,13,req,name=F_Fixed32_required,json=FFixed32Required" json:"F_Fixed32_required,omitempty"`
+	F_Fixed64Required *uint64  `protobuf:"fixed64,14,req,name=F_Fixed64_required,json=FFixed64Required" json:"F_Fixed64_required,omitempty"`
+	F_Uint32Required  *uint32  `protobuf:"varint,15,req,name=F_Uint32_required,json=FUint32Required" json:"F_Uint32_required,omitempty"`
+	F_Uint64Required  *uint64  `protobuf:"varint,16,req,nam
