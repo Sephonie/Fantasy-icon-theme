@@ -362,4 +362,32 @@ type GoTest struct {
 	F_Fixed32Required *uint32  `protobuf:"fixed32,13,req,name=F_Fixed32_required,json=FFixed32Required" json:"F_Fixed32_required,omitempty"`
 	F_Fixed64Required *uint64  `protobuf:"fixed64,14,req,name=F_Fixed64_required,json=FFixed64Required" json:"F_Fixed64_required,omitempty"`
 	F_Uint32Required  *uint32  `protobuf:"varint,15,req,name=F_Uint32_required,json=FUint32Required" json:"F_Uint32_required,omitempty"`
-	F_Uint64Required  *uint64  `protobuf:"varint,16,req,nam
+	F_Uint64Required  *uint64  `protobuf:"varint,16,req,name=F_Uint64_required,json=FUint64Required" json:"F_Uint64_required,omitempty"`
+	F_FloatRequired   *float32 `protobuf:"fixed32,17,req,name=F_Float_required,json=FFloatRequired" json:"F_Float_required,omitempty"`
+	F_DoubleRequired  *float64 `protobuf:"fixed64,18,req,name=F_Double_required,json=FDoubleRequired" json:"F_Double_required,omitempty"`
+	F_StringRequired  *string  `protobuf:"bytes,19,req,name=F_String_required,json=FStringRequired" json:"F_String_required,omitempty"`
+	F_BytesRequired   []byte   `protobuf:"bytes,101,req,name=F_Bytes_required,json=FBytesRequired" json:"F_Bytes_required,omitempty"`
+	F_Sint32Required  *int32   `protobuf:"zigzag32,102,req,name=F_Sint32_required,json=FSint32Required" json:"F_Sint32_required,omitempty"`
+	F_Sint64Required  *int64   `protobuf:"zigzag64,103,req,name=F_Sint64_required,json=FSint64Required" json:"F_Sint64_required,omitempty"`
+	// Repeated fields of all basic types
+	F_BoolRepeated    []bool    `protobuf:"varint,20,rep,name=F_Bool_repeated,json=FBoolRepeated" json:"F_Bool_repeated,omitempty"`
+	F_Int32Repeated   []int32   `protobuf:"varint,21,rep,name=F_Int32_repeated,json=FInt32Repeated" json:"F_Int32_repeated,omitempty"`
+	F_Int64Repeated   []int64   `protobuf:"varint,22,rep,name=F_Int64_repeated,json=FInt64Repeated" json:"F_Int64_repeated,omitempty"`
+	F_Fixed32Repeated []uint32  `protobuf:"fixed32,23,rep,name=F_Fixed32_repeated,json=FFixed32Repeated" json:"F_Fixed32_repeated,omitempty"`
+	F_Fixed64Repeated []uint64  `protobuf:"fixed64,24,rep,name=F_Fixed64_repeated,json=FFixed64Repeated" json:"F_Fixed64_repeated,omitempty"`
+	F_Uint32Repeated  []uint32  `protobuf:"varint,25,rep,name=F_Uint32_repeated,json=FUint32Repeated" json:"F_Uint32_repeated,omitempty"`
+	F_Uint64Repeated  []uint64  `protobuf:"varint,26,rep,name=F_Uint64_repeated,json=FUint64Repeated" json:"F_Uint64_repeated,omitempty"`
+	F_FloatRepeated   []float32 `protobuf:"fixed32,27,rep,name=F_Float_repeated,json=FFloatRepeated" json:"F_Float_repeated,omitempty"`
+	F_DoubleRepeated  []float64 `protobuf:"fixed64,28,rep,name=F_Double_repeated,json=FDoubleRepeated" json:"F_Double_repeated,omitempty"`
+	F_StringRepeated  []string  `protobuf:"bytes,29,rep,name=F_String_repeated,json=FStringRepeated" json:"F_String_repeated,omitempty"`
+	F_BytesRepeated   [][]byte  `protobuf:"bytes,201,rep,name=F_Bytes_repeated,json=FBytesRepeated" json:"F_Bytes_repeated,omitempty"`
+	F_Sint32Repeated  []int32   `protobuf:"zigzag32,202,rep,name=F_Sint32_repeated,json=FSint32Repeated" json:"F_Sint32_repeated,omitempty"`
+	F_Sint64Repeated  []int64   `protobuf:"zigzag64,203,rep,name=F_Sint64_repeated,json=FSint64Repeated" json:"F_Sint64_repeated,omitempty"`
+	// Optional fields of all basic types
+	F_BoolOptional    *bool    `protobuf:"varint,30,opt,name=F_Bool_optional,json=FBoolOptional" json:"F_Bool_optional,omitempty"`
+	F_Int32Optional   *int32   `protobuf:"varint,31,opt,name=F_Int32_optional,json=FInt32Optional" json:"F_Int32_optional,omitempty"`
+	F_Int64Optional   *int64   `protobuf:"varint,32,opt,name=F_Int64_optional,json=FInt64Optional" json:"F_Int64_optional,omitempty"`
+	F_Fixed32Optional *uint32  `protobuf:"fixed32,33,opt,name=F_Fixed32_optional,json=FFixed32Optional" json:"F_Fixed32_optional,omitempty"`
+	F_Fixed64Optional *uint64  `protobuf:"fixed64,34,opt,name=F_Fixed64_optional,json=FFixed64Optional" json:"F_Fixed64_optional,omitempty"`
+	F_Uint32Optional  *uint32  `protobuf:"varint,35,opt,name=F_Uint32_optional,json=FUint32Optional" json:"F_Uint32_optional,omitempty"`
+	
