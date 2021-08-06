@@ -390,4 +390,29 @@ type GoTest struct {
 	F_Fixed32Optional *uint32  `protobuf:"fixed32,33,opt,name=F_Fixed32_optional,json=FFixed32Optional" json:"F_Fixed32_optional,omitempty"`
 	F_Fixed64Optional *uint64  `protobuf:"fixed64,34,opt,name=F_Fixed64_optional,json=FFixed64Optional" json:"F_Fixed64_optional,omitempty"`
 	F_Uint32Optional  *uint32  `protobuf:"varint,35,opt,name=F_Uint32_optional,json=FUint32Optional" json:"F_Uint32_optional,omitempty"`
-	
+	F_Uint64Optional  *uint64  `protobuf:"varint,36,opt,name=F_Uint64_optional,json=FUint64Optional" json:"F_Uint64_optional,omitempty"`
+	F_FloatOptional   *float32 `protobuf:"fixed32,37,opt,name=F_Float_optional,json=FFloatOptional" json:"F_Float_optional,omitempty"`
+	F_DoubleOptional  *float64 `protobuf:"fixed64,38,opt,name=F_Double_optional,json=FDoubleOptional" json:"F_Double_optional,omitempty"`
+	F_StringOptional  *string  `protobuf:"bytes,39,opt,name=F_String_optional,json=FStringOptional" json:"F_String_optional,omitempty"`
+	F_BytesOptional   []byte   `protobuf:"bytes,301,opt,name=F_Bytes_optional,json=FBytesOptional" json:"F_Bytes_optional,omitempty"`
+	F_Sint32Optional  *int32   `protobuf:"zigzag32,302,opt,name=F_Sint32_optional,json=FSint32Optional" json:"F_Sint32_optional,omitempty"`
+	F_Sint64Optional  *int64   `protobuf:"zigzag64,303,opt,name=F_Sint64_optional,json=FSint64Optional" json:"F_Sint64_optional,omitempty"`
+	// Default-valued fields of all basic types
+	F_BoolDefaulted    *bool    `protobuf:"varint,40,opt,name=F_Bool_defaulted,json=FBoolDefaulted,def=1" json:"F_Bool_defaulted,omitempty"`
+	F_Int32Defaulted   *int32   `protobuf:"varint,41,opt,name=F_Int32_defaulted,json=FInt32Defaulted,def=32" json:"F_Int32_defaulted,omitempty"`
+	F_Int64Defaulted   *int64   `protobuf:"varint,42,opt,name=F_Int64_defaulted,json=FInt64Defaulted,def=64" json:"F_Int64_defaulted,omitempty"`
+	F_Fixed32Defaulted *uint32  `protobuf:"fixed32,43,opt,name=F_Fixed32_defaulted,json=FFixed32Defaulted,def=320" json:"F_Fixed32_defaulted,omitempty"`
+	F_Fixed64Defaulted *uint64  `protobuf:"fixed64,44,opt,name=F_Fixed64_defaulted,json=FFixed64Defaulted,def=640" json:"F_Fixed64_defaulted,omitempty"`
+	F_Uint32Defaulted  *uint32  `protobuf:"varint,45,opt,name=F_Uint32_defaulted,json=FUint32Defaulted,def=3200" json:"F_Uint32_defaulted,omitempty"`
+	F_Uint64Defaulted  *uint64  `protobuf:"varint,46,opt,name=F_Uint64_defaulted,json=FUint64Defaulted,def=6400" json:"F_Uint64_defaulted,omitempty"`
+	F_FloatDefaulted   *float32 `protobuf:"fixed32,47,opt,name=F_Float_defaulted,json=FFloatDefaulted,def=314159" json:"F_Float_defaulted,omitempty"`
+	F_DoubleDefaulted  *float64 `protobuf:"fixed64,48,opt,name=F_Double_defaulted,json=FDoubleDefaulted,def=271828" json:"F_Double_defaulted,omitempty"`
+	F_StringDefaulted  *string  `protobuf:"bytes,49,opt,name=F_String_defaulted,json=FStringDefaulted,def=hello, \"world!\"\n" json:"F_String_defaulted,omitempty"`
+	F_BytesDefaulted   []byte   `protobuf:"bytes,401,opt,name=F_Bytes_defaulted,json=FBytesDefaulted,def=Bignose" json:"F_Bytes_defaulted,omitempty"`
+	F_Sint32Defaulted  *int32   `protobuf:"zigzag32,402,opt,name=F_Sint32_defaulted,json=FSint32Defaulted,def=-32" json:"F_Sint32_defaulted,omitempty"`
+	F_Sint64Defaulted  *int64   `protobuf:"zigzag64,403,opt,name=F_Sint64_defaulted,json=FSint64Defaulted,def=-64" json:"F_Sint64_defaulted,omitempty"`
+	// Packed repeated fields (no string or bytes).
+	F_BoolRepeatedPacked    []bool                  `protobuf:"varint,50,rep,packed,name=F_Bool_repeated_packed,json=FBoolRepeatedPacked" json:"F_Bool_repeated_packed,omitempty"`
+	F_Int32RepeatedPacked   []int32                 `protobuf:"varint,51,rep,packed,name=F_Int32_repeated_packed,json=FInt32RepeatedPacked" json:"F_Int32_repeated_packed,omitempty"`
+	F_Int64RepeatedPacked   []int64                 `protobuf:"varint,52,rep,packed,name=F_Int64_repeated_packed,json=FInt64RepeatedPacked" json:"F_Int64_repeated_packed,omitempty"`
+	F_Fixed32RepeatedPacked []uint32                `protobuf:"fixed32,53,rep,packed,name=F_Fixed32_repeated_packed,json=FFixed32RepeatedPacked" 
