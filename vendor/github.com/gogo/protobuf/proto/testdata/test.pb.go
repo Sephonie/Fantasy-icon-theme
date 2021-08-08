@@ -415,4 +415,83 @@ type GoTest struct {
 	F_BoolRepeatedPacked    []bool                  `protobuf:"varint,50,rep,packed,name=F_Bool_repeated_packed,json=FBoolRepeatedPacked" json:"F_Bool_repeated_packed,omitempty"`
 	F_Int32RepeatedPacked   []int32                 `protobuf:"varint,51,rep,packed,name=F_Int32_repeated_packed,json=FInt32RepeatedPacked" json:"F_Int32_repeated_packed,omitempty"`
 	F_Int64RepeatedPacked   []int64                 `protobuf:"varint,52,rep,packed,name=F_Int64_repeated_packed,json=FInt64RepeatedPacked" json:"F_Int64_repeated_packed,omitempty"`
-	F_Fixed32RepeatedPacked []uint32                `protobuf:"fixed32,53,rep,packed,name=F_Fixed32_repeated_packed,json=FFixed32RepeatedPacked" 
+	F_Fixed32RepeatedPacked []uint32                `protobuf:"fixed32,53,rep,packed,name=F_Fixed32_repeated_packed,json=FFixed32RepeatedPacked" json:"F_Fixed32_repeated_packed,omitempty"`
+	F_Fixed64RepeatedPacked []uint64                `protobuf:"fixed64,54,rep,packed,name=F_Fixed64_repeated_packed,json=FFixed64RepeatedPacked" json:"F_Fixed64_repeated_packed,omitempty"`
+	F_Uint32RepeatedPacked  []uint32                `protobuf:"varint,55,rep,packed,name=F_Uint32_repeated_packed,json=FUint32RepeatedPacked" json:"F_Uint32_repeated_packed,omitempty"`
+	F_Uint64RepeatedPacked  []uint64                `protobuf:"varint,56,rep,packed,name=F_Uint64_repeated_packed,json=FUint64RepeatedPacked" json:"F_Uint64_repeated_packed,omitempty"`
+	F_FloatRepeatedPacked   []float32               `protobuf:"fixed32,57,rep,packed,name=F_Float_repeated_packed,json=FFloatRepeatedPacked" json:"F_Float_repeated_packed,omitempty"`
+	F_DoubleRepeatedPacked  []float64               `protobuf:"fixed64,58,rep,packed,name=F_Double_repeated_packed,json=FDoubleRepeatedPacked" json:"F_Double_repeated_packed,omitempty"`
+	F_Sint32RepeatedPacked  []int32                 `protobuf:"zigzag32,502,rep,packed,name=F_Sint32_repeated_packed,json=FSint32RepeatedPacked" json:"F_Sint32_repeated_packed,omitempty"`
+	F_Sint64RepeatedPacked  []int64                 `protobuf:"zigzag64,503,rep,packed,name=F_Sint64_repeated_packed,json=FSint64RepeatedPacked" json:"F_Sint64_repeated_packed,omitempty"`
+	Requiredgroup           *GoTest_RequiredGroup   `protobuf:"group,70,req,name=RequiredGroup,json=requiredgroup" json:"requiredgroup,omitempty"`
+	Repeatedgroup           []*GoTest_RepeatedGroup `protobuf:"group,80,rep,name=RepeatedGroup,json=repeatedgroup" json:"repeatedgroup,omitempty"`
+	Optionalgroup           *GoTest_OptionalGroup   `protobuf:"group,90,opt,name=OptionalGroup,json=optionalgroup" json:"optionalgroup,omitempty"`
+	XXX_unrecognized        []byte                  `json:"-"`
+}
+
+func (m *GoTest) Reset()                    { *m = GoTest{} }
+func (m *GoTest) String() string            { return proto.CompactTextString(m) }
+func (*GoTest) ProtoMessage()               {}
+func (*GoTest) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{2} }
+
+const Default_GoTest_F_BoolDefaulted bool = true
+const Default_GoTest_F_Int32Defaulted int32 = 32
+const Default_GoTest_F_Int64Defaulted int64 = 64
+const Default_GoTest_F_Fixed32Defaulted uint32 = 320
+const Default_GoTest_F_Fixed64Defaulted uint64 = 640
+const Default_GoTest_F_Uint32Defaulted uint32 = 3200
+const Default_GoTest_F_Uint64Defaulted uint64 = 6400
+const Default_GoTest_F_FloatDefaulted float32 = 314159
+const Default_GoTest_F_DoubleDefaulted float64 = 271828
+const Default_GoTest_F_StringDefaulted string = "hello, \"world!\"\n"
+
+var Default_GoTest_F_BytesDefaulted []byte = []byte("Bignose")
+
+const Default_GoTest_F_Sint32Defaulted int32 = -32
+const Default_GoTest_F_Sint64Defaulted int64 = -64
+
+func (m *GoTest) GetKind() GoTest_KIND {
+	if m != nil && m.Kind != nil {
+		return *m.Kind
+	}
+	return GoTest_VOID
+}
+
+func (m *GoTest) GetTable() string {
+	if m != nil && m.Table != nil {
+		return *m.Table
+	}
+	return ""
+}
+
+func (m *GoTest) GetParam() int32 {
+	if m != nil && m.Param != nil {
+		return *m.Param
+	}
+	return 0
+}
+
+func (m *GoTest) GetRequiredField() *GoTestField {
+	if m != nil {
+		return m.RequiredField
+	}
+	return nil
+}
+
+func (m *GoTest) GetRepeatedField() []*GoTestField {
+	if m != nil {
+		return m.RepeatedField
+	}
+	return nil
+}
+
+func (m *GoTest) GetOptionalField() *GoTestField {
+	if m != nil {
+		return m.OptionalField
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_BoolRequired() bool {
+	if m != nil && m.F_BoolRequired != nil {
+		return 
