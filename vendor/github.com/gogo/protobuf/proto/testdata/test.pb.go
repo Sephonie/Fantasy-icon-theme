@@ -494,4 +494,206 @@ func (m *GoTest) GetOptionalField() *GoTestField {
 
 func (m *GoTest) GetF_BoolRequired() bool {
 	if m != nil && m.F_BoolRequired != nil {
-		return 
+		return *m.F_BoolRequired
+	}
+	return false
+}
+
+func (m *GoTest) GetF_Int32Required() int32 {
+	if m != nil && m.F_Int32Required != nil {
+		return *m.F_Int32Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Int64Required() int64 {
+	if m != nil && m.F_Int64Required != nil {
+		return *m.F_Int64Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Fixed32Required() uint32 {
+	if m != nil && m.F_Fixed32Required != nil {
+		return *m.F_Fixed32Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Fixed64Required() uint64 {
+	if m != nil && m.F_Fixed64Required != nil {
+		return *m.F_Fixed64Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Uint32Required() uint32 {
+	if m != nil && m.F_Uint32Required != nil {
+		return *m.F_Uint32Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Uint64Required() uint64 {
+	if m != nil && m.F_Uint64Required != nil {
+		return *m.F_Uint64Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_FloatRequired() float32 {
+	if m != nil && m.F_FloatRequired != nil {
+		return *m.F_FloatRequired
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_DoubleRequired() float64 {
+	if m != nil && m.F_DoubleRequired != nil {
+		return *m.F_DoubleRequired
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_StringRequired() string {
+	if m != nil && m.F_StringRequired != nil {
+		return *m.F_StringRequired
+	}
+	return ""
+}
+
+func (m *GoTest) GetF_BytesRequired() []byte {
+	if m != nil {
+		return m.F_BytesRequired
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Sint32Required() int32 {
+	if m != nil && m.F_Sint32Required != nil {
+		return *m.F_Sint32Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Sint64Required() int64 {
+	if m != nil && m.F_Sint64Required != nil {
+		return *m.F_Sint64Required
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_BoolRepeated() []bool {
+	if m != nil {
+		return m.F_BoolRepeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Int32Repeated() []int32 {
+	if m != nil {
+		return m.F_Int32Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Int64Repeated() []int64 {
+	if m != nil {
+		return m.F_Int64Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Fixed32Repeated() []uint32 {
+	if m != nil {
+		return m.F_Fixed32Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Fixed64Repeated() []uint64 {
+	if m != nil {
+		return m.F_Fixed64Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Uint32Repeated() []uint32 {
+	if m != nil {
+		return m.F_Uint32Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Uint64Repeated() []uint64 {
+	if m != nil {
+		return m.F_Uint64Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_FloatRepeated() []float32 {
+	if m != nil {
+		return m.F_FloatRepeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_DoubleRepeated() []float64 {
+	if m != nil {
+		return m.F_DoubleRepeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_StringRepeated() []string {
+	if m != nil {
+		return m.F_StringRepeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_BytesRepeated() [][]byte {
+	if m != nil {
+		return m.F_BytesRepeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Sint32Repeated() []int32 {
+	if m != nil {
+		return m.F_Sint32Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Sint64Repeated() []int64 {
+	if m != nil {
+		return m.F_Sint64Repeated
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_BoolOptional() bool {
+	if m != nil && m.F_BoolOptional != nil {
+		return *m.F_BoolOptional
+	}
+	return false
+}
+
+func (m *GoTest) GetF_Int32Optional() int32 {
+	if m != nil && m.F_Int32Optional != nil {
+		return *m.F_Int32Optional
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Int64Optional() int64 {
+	if m != nil && m.F_Int64Optional != nil {
+		return *m.F_Int64Optional
+	}
+	return 0
+}
+
+func (m *GoTest) GetF_Fixed32Optional() uint32 {
+	if m != nil 
