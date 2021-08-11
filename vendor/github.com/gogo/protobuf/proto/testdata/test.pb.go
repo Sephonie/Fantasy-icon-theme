@@ -1097,4 +1097,112 @@ func (m *GoSkipTest) GetSkipgroup() *GoSkipTest_SkipGroup {
 
 type GoSkipTest_SkipGroup struct {
 	GroupInt32       *int32  `protobuf:"varint,16,req,name=group_int32,json=groupInt32" json:"group_int32,omitempty"`
-	GroupString      *string `protobuf:"bytes,17,req,name=group_string,json=groupString" json:"grou
+	GroupString      *string `protobuf:"bytes,17,req,name=group_string,json=groupString" json:"group_string,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *GoSkipTest_SkipGroup) Reset()                    { *m = GoSkipTest_SkipGroup{} }
+func (m *GoSkipTest_SkipGroup) String() string            { return proto.CompactTextString(m) }
+func (*GoSkipTest_SkipGroup) ProtoMessage()               {}
+func (*GoSkipTest_SkipGroup) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{4, 0} }
+
+func (m *GoSkipTest_SkipGroup) GetGroupInt32() int32 {
+	if m != nil && m.GroupInt32 != nil {
+		return *m.GroupInt32
+	}
+	return 0
+}
+
+func (m *GoSkipTest_SkipGroup) GetGroupString() string {
+	if m != nil && m.GroupString != nil {
+		return *m.GroupString
+	}
+	return ""
+}
+
+// For testing packed/non-packed decoder switching.
+// A serialized instance of one should be deserializable as the other.
+type NonPackedTest struct {
+	A                []int32 `protobuf:"varint,1,rep,name=a" json:"a,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *NonPackedTest) Reset()                    { *m = NonPackedTest{} }
+func (m *NonPackedTest) String() string            { return proto.CompactTextString(m) }
+func (*NonPackedTest) ProtoMessage()               {}
+func (*NonPackedTest) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{5} }
+
+func (m *NonPackedTest) GetA() []int32 {
+	if m != nil {
+		return m.A
+	}
+	return nil
+}
+
+type PackedTest struct {
+	B                []int32 `protobuf:"varint,1,rep,packed,name=b" json:"b,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *PackedTest) Reset()                    { *m = PackedTest{} }
+func (m *PackedTest) String() string            { return proto.CompactTextString(m) }
+func (*PackedTest) ProtoMessage()               {}
+func (*PackedTest) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{6} }
+
+func (m *PackedTest) GetB() []int32 {
+	if m != nil {
+		return m.B
+	}
+	return nil
+}
+
+type MaxTag struct {
+	// Maximum possible tag number.
+	LastField        *string `protobuf:"bytes,536870911,opt,name=last_field,json=lastField" json:"last_field,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *MaxTag) Reset()                    { *m = MaxTag{} }
+func (m *MaxTag) String() string            { return proto.CompactTextString(m) }
+func (*MaxTag) ProtoMessage()               {}
+func (*MaxTag) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{7} }
+
+func (m *MaxTag) GetLastField() string {
+	if m != nil && m.LastField != nil {
+		return *m.LastField
+	}
+	return ""
+}
+
+type OldMessage struct {
+	Nested           *OldMessage_Nested `protobuf:"bytes,1,opt,name=nested" json:"nested,omitempty"`
+	Num              *int32             `protobuf:"varint,2,opt,name=num" json:"num,omitempty"`
+	XXX_unrecognized []byte             `json:"-"`
+}
+
+func (m *OldMessage) Reset()                    { *m = OldMessage{} }
+func (m *OldMessage) String() string            { return proto.CompactTextString(m) }
+func (*OldMessage) ProtoMessage()               {}
+func (*OldMessage) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{8} }
+
+func (m *OldMessage) GetNested() *OldMessage_Nested {
+	if m != nil {
+		return m.Nested
+	}
+	return nil
+}
+
+func (m *OldMessage) GetNum() int32 {
+	if m != nil && m.Num != nil {
+		return *m.Num
+	}
+	return 0
+}
+
+type OldMessage_Nested struct {
+	Name             *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *OldMessage_Nested) Reset()                    { *m = OldMessage_Nested{} }
+func (m *OldMessage_Nested) String() st
