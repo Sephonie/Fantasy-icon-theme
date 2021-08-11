@@ -1000,4 +1000,101 @@ func (*GoTest_OptionalGroup) ProtoMessage()               {}
 func (*GoTest_OptionalGroup) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{2, 2} }
 
 func (m *GoTest_OptionalGroup) GetRequiredField() string {
-	if m !=
+	if m != nil && m.RequiredField != nil {
+		return *m.RequiredField
+	}
+	return ""
+}
+
+// For testing a group containing a required field.
+type GoTestRequiredGroupField struct {
+	Group            *GoTestRequiredGroupField_Group `protobuf:"group,1,req,name=Group,json=group" json:"group,omitempty"`
+	XXX_unrecognized []byte                          `json:"-"`
+}
+
+func (m *GoTestRequiredGroupField) Reset()                    { *m = GoTestRequiredGroupField{} }
+func (m *GoTestRequiredGroupField) String() string            { return proto.CompactTextString(m) }
+func (*GoTestRequiredGroupField) ProtoMessage()               {}
+func (*GoTestRequiredGroupField) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{3} }
+
+func (m *GoTestRequiredGroupField) GetGroup() *GoTestRequiredGroupField_Group {
+	if m != nil {
+		return m.Group
+	}
+	return nil
+}
+
+type GoTestRequiredGroupField_Group struct {
+	Field            *int32 `protobuf:"varint,2,req,name=Field" json:"Field,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *GoTestRequiredGroupField_Group) Reset()         { *m = GoTestRequiredGroupField_Group{} }
+func (m *GoTestRequiredGroupField_Group) String() string { return proto.CompactTextString(m) }
+func (*GoTestRequiredGroupField_Group) ProtoMessage()    {}
+func (*GoTestRequiredGroupField_Group) Descriptor() ([]byte, []int) {
+	return fileDescriptorTest, []int{3, 0}
+}
+
+func (m *GoTestRequiredGroupField_Group) GetField() int32 {
+	if m != nil && m.Field != nil {
+		return *m.Field
+	}
+	return 0
+}
+
+// For testing skipping of unrecognized fields.
+// Numbers are all big, larger than tag numbers in GoTestField,
+// the message used in the corresponding test.
+type GoSkipTest struct {
+	SkipInt32        *int32                `protobuf:"varint,11,req,name=skip_int32,json=skipInt32" json:"skip_int32,omitempty"`
+	SkipFixed32      *uint32               `protobuf:"fixed32,12,req,name=skip_fixed32,json=skipFixed32" json:"skip_fixed32,omitempty"`
+	SkipFixed64      *uint64               `protobuf:"fixed64,13,req,name=skip_fixed64,json=skipFixed64" json:"skip_fixed64,omitempty"`
+	SkipString       *string               `protobuf:"bytes,14,req,name=skip_string,json=skipString" json:"skip_string,omitempty"`
+	Skipgroup        *GoSkipTest_SkipGroup `protobuf:"group,15,req,name=SkipGroup,json=skipgroup" json:"skipgroup,omitempty"`
+	XXX_unrecognized []byte                `json:"-"`
+}
+
+func (m *GoSkipTest) Reset()                    { *m = GoSkipTest{} }
+func (m *GoSkipTest) String() string            { return proto.CompactTextString(m) }
+func (*GoSkipTest) ProtoMessage()               {}
+func (*GoSkipTest) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{4} }
+
+func (m *GoSkipTest) GetSkipInt32() int32 {
+	if m != nil && m.SkipInt32 != nil {
+		return *m.SkipInt32
+	}
+	return 0
+}
+
+func (m *GoSkipTest) GetSkipFixed32() uint32 {
+	if m != nil && m.SkipFixed32 != nil {
+		return *m.SkipFixed32
+	}
+	return 0
+}
+
+func (m *GoSkipTest) GetSkipFixed64() uint64 {
+	if m != nil && m.SkipFixed64 != nil {
+		return *m.SkipFixed64
+	}
+	return 0
+}
+
+func (m *GoSkipTest) GetSkipString() string {
+	if m != nil && m.SkipString != nil {
+		return *m.SkipString
+	}
+	return ""
+}
+
+func (m *GoSkipTest) GetSkipgroup() *GoSkipTest_SkipGroup {
+	if m != nil {
+		return m.Skipgroup
+	}
+	return nil
+}
+
+type GoSkipTest_SkipGroup struct {
+	GroupInt32       *int32  `protobuf:"varint,16,req,name=group_int32,json=groupInt32" json:"group_int32,omitempty"`
+	GroupString      *string `protobuf:"bytes,17,req,name=group_string,json=groupString" json:"grou
