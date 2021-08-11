@@ -857,4 +857,147 @@ func (m *GoTest) GetF_Sint64Defaulted() int64 {
 }
 
 func (m *GoTest) GetF_BoolRepeatedPacked() []bool {
-	if 
+	if m != nil {
+		return m.F_BoolRepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Int32RepeatedPacked() []int32 {
+	if m != nil {
+		return m.F_Int32RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Int64RepeatedPacked() []int64 {
+	if m != nil {
+		return m.F_Int64RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Fixed32RepeatedPacked() []uint32 {
+	if m != nil {
+		return m.F_Fixed32RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Fixed64RepeatedPacked() []uint64 {
+	if m != nil {
+		return m.F_Fixed64RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Uint32RepeatedPacked() []uint32 {
+	if m != nil {
+		return m.F_Uint32RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Uint64RepeatedPacked() []uint64 {
+	if m != nil {
+		return m.F_Uint64RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_FloatRepeatedPacked() []float32 {
+	if m != nil {
+		return m.F_FloatRepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_DoubleRepeatedPacked() []float64 {
+	if m != nil {
+		return m.F_DoubleRepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Sint32RepeatedPacked() []int32 {
+	if m != nil {
+		return m.F_Sint32RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetF_Sint64RepeatedPacked() []int64 {
+	if m != nil {
+		return m.F_Sint64RepeatedPacked
+	}
+	return nil
+}
+
+func (m *GoTest) GetRequiredgroup() *GoTest_RequiredGroup {
+	if m != nil {
+		return m.Requiredgroup
+	}
+	return nil
+}
+
+func (m *GoTest) GetRepeatedgroup() []*GoTest_RepeatedGroup {
+	if m != nil {
+		return m.Repeatedgroup
+	}
+	return nil
+}
+
+func (m *GoTest) GetOptionalgroup() *GoTest_OptionalGroup {
+	if m != nil {
+		return m.Optionalgroup
+	}
+	return nil
+}
+
+// Required, repeated, and optional groups.
+type GoTest_RequiredGroup struct {
+	RequiredField    *string `protobuf:"bytes,71,req,name=RequiredField" json:"RequiredField,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *GoTest_RequiredGroup) Reset()                    { *m = GoTest_RequiredGroup{} }
+func (m *GoTest_RequiredGroup) String() string            { return proto.CompactTextString(m) }
+func (*GoTest_RequiredGroup) ProtoMessage()               {}
+func (*GoTest_RequiredGroup) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{2, 0} }
+
+func (m *GoTest_RequiredGroup) GetRequiredField() string {
+	if m != nil && m.RequiredField != nil {
+		return *m.RequiredField
+	}
+	return ""
+}
+
+type GoTest_RepeatedGroup struct {
+	RequiredField    *string `protobuf:"bytes,81,req,name=RequiredField" json:"RequiredField,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *GoTest_RepeatedGroup) Reset()                    { *m = GoTest_RepeatedGroup{} }
+func (m *GoTest_RepeatedGroup) String() string            { return proto.CompactTextString(m) }
+func (*GoTest_RepeatedGroup) ProtoMessage()               {}
+func (*GoTest_RepeatedGroup) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{2, 1} }
+
+func (m *GoTest_RepeatedGroup) GetRequiredField() string {
+	if m != nil && m.RequiredField != nil {
+		return *m.RequiredField
+	}
+	return ""
+}
+
+type GoTest_OptionalGroup struct {
+	RequiredField    *string `protobuf:"bytes,91,req,name=RequiredField" json:"RequiredField,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *GoTest_OptionalGroup) Reset()                    { *m = GoTest_OptionalGroup{} }
+func (m *GoTest_OptionalGroup) String() string            { return proto.CompactTextString(m) }
+func (*GoTest_OptionalGroup) ProtoMessage()               {}
+func (*GoTest_OptionalGroup) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{2, 2} }
+
+func (m *GoTest_OptionalGroup) GetRequiredField() string {
+	if m !=
