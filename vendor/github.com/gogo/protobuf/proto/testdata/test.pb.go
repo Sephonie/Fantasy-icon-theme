@@ -1309,4 +1309,93 @@ type OtherMessage struct {
 	Value                        []byte        `protobuf:"bytes,2,opt,name=value" json:"value,omitempty"`
 	Weight                       *float32      `protobuf:"fixed32,3,opt,name=weight" json:"weight,omitempty"`
 	Inner                        *InnerMessage `protobuf:"bytes,4,opt,name=inner" json:"inner,omitempty"`
-	proto.XXX_InternalExtensions `json:
+	proto.XXX_InternalExtensions `json:"-"`
+	XXX_unrecognized             []byte `json:"-"`
+}
+
+func (m *OtherMessage) Reset()                    { *m = OtherMessage{} }
+func (m *OtherMessage) String() string            { return proto.CompactTextString(m) }
+func (*OtherMessage) ProtoMessage()               {}
+func (*OtherMessage) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{11} }
+
+var extRange_OtherMessage = []proto.ExtensionRange{
+	{Start: 100, End: 536870911},
+}
+
+func (*OtherMessage) ExtensionRangeArray() []proto.ExtensionRange {
+	return extRange_OtherMessage
+}
+
+func (m *OtherMessage) GetKey() int64 {
+	if m != nil && m.Key != nil {
+		return *m.Key
+	}
+	return 0
+}
+
+func (m *OtherMessage) GetValue() []byte {
+	if m != nil {
+		return m.Value
+	}
+	return nil
+}
+
+func (m *OtherMessage) GetWeight() float32 {
+	if m != nil && m.Weight != nil {
+		return *m.Weight
+	}
+	return 0
+}
+
+func (m *OtherMessage) GetInner() *InnerMessage {
+	if m != nil {
+		return m.Inner
+	}
+	return nil
+}
+
+type RequiredInnerMessage struct {
+	LeoFinallyWonAnOscar *InnerMessage `protobuf:"bytes,1,req,name=leo_finally_won_an_oscar,json=leoFinallyWonAnOscar" json:"leo_finally_won_an_oscar,omitempty"`
+	XXX_unrecognized     []byte        `json:"-"`
+}
+
+func (m *RequiredInnerMessage) Reset()                    { *m = RequiredInnerMessage{} }
+func (m *RequiredInnerMessage) String() string            { return proto.CompactTextString(m) }
+func (*RequiredInnerMessage) ProtoMessage()               {}
+func (*RequiredInnerMessage) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{12} }
+
+func (m *RequiredInnerMessage) GetLeoFinallyWonAnOscar() *InnerMessage {
+	if m != nil {
+		return m.LeoFinallyWonAnOscar
+	}
+	return nil
+}
+
+type MyMessage struct {
+	Count          *int32                `protobuf:"varint,1,req,name=count" json:"count,omitempty"`
+	Name           *string               `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
+	Quote          *string               `protobuf:"bytes,3,opt,name=quote" json:"quote,omitempty"`
+	Pet            []string              `protobuf:"bytes,4,rep,name=pet" json:"pet,omitempty"`
+	Inner          *InnerMessage         `protobuf:"bytes,5,opt,name=inner" json:"inner,omitempty"`
+	Others         []*OtherMessage       `protobuf:"bytes,6,rep,name=others" json:"others,omitempty"`
+	WeMustGoDeeper *RequiredInnerMessage `protobuf:"bytes,13,opt,name=we_must_go_deeper,json=weMustGoDeeper" json:"we_must_go_deeper,omitempty"`
+	RepInner       []*InnerMessage       `protobuf:"bytes,12,rep,name=rep_inner,json=repInner" json:"rep_inner,omitempty"`
+	Bikeshed       *MyMessage_Color      `protobuf:"varint,7,opt,name=bikeshed,enum=testdata.MyMessage_Color" json:"bikeshed,omitempty"`
+	Somegroup      *MyMessage_SomeGroup  `protobuf:"group,8,opt,name=SomeGroup,json=somegroup" json:"somegroup,omitempty"`
+	// This field becomes [][]byte in the generated code.
+	RepBytes                     [][]byte `protobuf:"bytes,10,rep,name=rep_bytes,json=repBytes" json:"rep_bytes,omitempty"`
+	Bigfloat                     *float64 `protobuf:"fixed64,11,opt,name=bigfloat" json:"bigfloat,omitempty"`
+	proto.XXX_InternalExtensions `json:"-"`
+	XXX_unrecognized             []byte `json:"-"`
+}
+
+func (m *MyMessage) Reset()                    { *m = MyMessage{} }
+func (m *MyMessage) String() string            { return proto.CompactTextString(m) }
+func (*MyMessage) ProtoMessage()               {}
+func (*MyMessage) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{13} }
+
+var extRange_MyMessage = []proto.ExtensionRange{
+	{Start: 100, End: 536870911},
+}
+
+func (*MyMessage) ExtensionRangeArray() []proto
