@@ -1205,4 +1205,108 @@ type OldMessage_Nested struct {
 }
 
 func (m *OldMessage_Nested) Reset()                    { *m = OldMessage_Nested{} }
-func (m *OldMessage_Nested) String() st
+func (m *OldMessage_Nested) String() string            { return proto.CompactTextString(m) }
+func (*OldMessage_Nested) ProtoMessage()               {}
+func (*OldMessage_Nested) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{8, 0} }
+
+func (m *OldMessage_Nested) GetName() string {
+	if m != nil && m.Name != nil {
+		return *m.Name
+	}
+	return ""
+}
+
+// NewMessage is wire compatible with OldMessage;
+// imagine it as a future version.
+type NewMessage struct {
+	Nested *NewMessage_Nested `protobuf:"bytes,1,opt,name=nested" json:"nested,omitempty"`
+	// This is an int32 in OldMessage.
+	Num              *int64 `protobuf:"varint,2,opt,name=num" json:"num,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *NewMessage) Reset()                    { *m = NewMessage{} }
+func (m *NewMessage) String() string            { return proto.CompactTextString(m) }
+func (*NewMessage) ProtoMessage()               {}
+func (*NewMessage) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{9} }
+
+func (m *NewMessage) GetNested() *NewMessage_Nested {
+	if m != nil {
+		return m.Nested
+	}
+	return nil
+}
+
+func (m *NewMessage) GetNum() int64 {
+	if m != nil && m.Num != nil {
+		return *m.Num
+	}
+	return 0
+}
+
+type NewMessage_Nested struct {
+	Name             *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	FoodGroup        *string `protobuf:"bytes,2,opt,name=food_group,json=foodGroup" json:"food_group,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *NewMessage_Nested) Reset()                    { *m = NewMessage_Nested{} }
+func (m *NewMessage_Nested) String() string            { return proto.CompactTextString(m) }
+func (*NewMessage_Nested) ProtoMessage()               {}
+func (*NewMessage_Nested) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{9, 0} }
+
+func (m *NewMessage_Nested) GetName() string {
+	if m != nil && m.Name != nil {
+		return *m.Name
+	}
+	return ""
+}
+
+func (m *NewMessage_Nested) GetFoodGroup() string {
+	if m != nil && m.FoodGroup != nil {
+		return *m.FoodGroup
+	}
+	return ""
+}
+
+type InnerMessage struct {
+	Host             *string `protobuf:"bytes,1,req,name=host" json:"host,omitempty"`
+	Port             *int32  `protobuf:"varint,2,opt,name=port,def=4000" json:"port,omitempty"`
+	Connected        *bool   `protobuf:"varint,3,opt,name=connected" json:"connected,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *InnerMessage) Reset()                    { *m = InnerMessage{} }
+func (m *InnerMessage) String() string            { return proto.CompactTextString(m) }
+func (*InnerMessage) ProtoMessage()               {}
+func (*InnerMessage) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{10} }
+
+const Default_InnerMessage_Port int32 = 4000
+
+func (m *InnerMessage) GetHost() string {
+	if m != nil && m.Host != nil {
+		return *m.Host
+	}
+	return ""
+}
+
+func (m *InnerMessage) GetPort() int32 {
+	if m != nil && m.Port != nil {
+		return *m.Port
+	}
+	return Default_InnerMessage_Port
+}
+
+func (m *InnerMessage) GetConnected() bool {
+	if m != nil && m.Connected != nil {
+		return *m.Connected
+	}
+	return false
+}
+
+type OtherMessage struct {
+	Key                          *int64        `protobuf:"varint,1,opt,name=key" json:"key,omitempty"`
+	Value                        []byte        `protobuf:"bytes,2,opt,name=value" json:"value,omitempty"`
+	Weight                       *float32      `protobuf:"fixed32,3,opt,name=weight" json:"weight,omitempty"`
+	Inner                        *InnerMessage `protobuf:"bytes,4,opt,name=inner" json:"inner,omitempty"`
+	proto.XXX_InternalExtensions `json:
