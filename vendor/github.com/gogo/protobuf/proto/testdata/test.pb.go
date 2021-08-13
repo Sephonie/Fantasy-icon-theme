@@ -1398,4 +1398,157 @@ var extRange_MyMessage = []proto.ExtensionRange{
 	{Start: 100, End: 536870911},
 }
 
-func (*MyMessage) ExtensionRangeArray() []proto
+func (*MyMessage) ExtensionRangeArray() []proto.ExtensionRange {
+	return extRange_MyMessage
+}
+
+func (m *MyMessage) GetCount() int32 {
+	if m != nil && m.Count != nil {
+		return *m.Count
+	}
+	return 0
+}
+
+func (m *MyMessage) GetName() string {
+	if m != nil && m.Name != nil {
+		return *m.Name
+	}
+	return ""
+}
+
+func (m *MyMessage) GetQuote() string {
+	if m != nil && m.Quote != nil {
+		return *m.Quote
+	}
+	return ""
+}
+
+func (m *MyMessage) GetPet() []string {
+	if m != nil {
+		return m.Pet
+	}
+	return nil
+}
+
+func (m *MyMessage) GetInner() *InnerMessage {
+	if m != nil {
+		return m.Inner
+	}
+	return nil
+}
+
+func (m *MyMessage) GetOthers() []*OtherMessage {
+	if m != nil {
+		return m.Others
+	}
+	return nil
+}
+
+func (m *MyMessage) GetWeMustGoDeeper() *RequiredInnerMessage {
+	if m != nil {
+		return m.WeMustGoDeeper
+	}
+	return nil
+}
+
+func (m *MyMessage) GetRepInner() []*InnerMessage {
+	if m != nil {
+		return m.RepInner
+	}
+	return nil
+}
+
+func (m *MyMessage) GetBikeshed() MyMessage_Color {
+	if m != nil && m.Bikeshed != nil {
+		return *m.Bikeshed
+	}
+	return MyMessage_RED
+}
+
+func (m *MyMessage) GetSomegroup() *MyMessage_SomeGroup {
+	if m != nil {
+		return m.Somegroup
+	}
+	return nil
+}
+
+func (m *MyMessage) GetRepBytes() [][]byte {
+	if m != nil {
+		return m.RepBytes
+	}
+	return nil
+}
+
+func (m *MyMessage) GetBigfloat() float64 {
+	if m != nil && m.Bigfloat != nil {
+		return *m.Bigfloat
+	}
+	return 0
+}
+
+type MyMessage_SomeGroup struct {
+	GroupField       *int32 `protobuf:"varint,9,opt,name=group_field,json=groupField" json:"group_field,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *MyMessage_SomeGroup) Reset()                    { *m = MyMessage_SomeGroup{} }
+func (m *MyMessage_SomeGroup) String() string            { return proto.CompactTextString(m) }
+func (*MyMessage_SomeGroup) ProtoMessage()               {}
+func (*MyMessage_SomeGroup) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{13, 0} }
+
+func (m *MyMessage_SomeGroup) GetGroupField() int32 {
+	if m != nil && m.GroupField != nil {
+		return *m.GroupField
+	}
+	return 0
+}
+
+type Ext struct {
+	Data             *string `protobuf:"bytes,1,opt,name=data" json:"data,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *Ext) Reset()                    { *m = Ext{} }
+func (m *Ext) String() string            { return proto.CompactTextString(m) }
+func (*Ext) ProtoMessage()               {}
+func (*Ext) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{14} }
+
+func (m *Ext) GetData() string {
+	if m != nil && m.Data != nil {
+		return *m.Data
+	}
+	return ""
+}
+
+var E_Ext_More = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessage)(nil),
+	ExtensionType: (*Ext)(nil),
+	Field:         103,
+	Name:          "testdata.Ext.more",
+	Tag:           "bytes,103,opt,name=more",
+	Filename:      "test.proto",
+}
+
+var E_Ext_Text = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessage)(nil),
+	ExtensionType: (*string)(nil),
+	Field:         104,
+	Name:          "testdata.Ext.text",
+	Tag:           "bytes,104,opt,name=text",
+	Filename:      "test.proto",
+}
+
+var E_Ext_Number = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessage)(nil),
+	ExtensionType: (*int32)(nil),
+	Field:         105,
+	Name:          "testdata.Ext.number",
+	Tag:           "varint,105,opt,name=number",
+	Filename:      "test.proto",
+}
+
+type ComplexExtension struct {
+	First            *int32  `protobuf:"varint,1,opt,name=first" json:"first,omitempty"`
+	Second           *int32  `protobuf:"varint,2,opt,name=second" json:"second,omitempty"`
+	Third            []int32 `protobuf:"varint,3,rep,name=third" json:"third,omitempty"`
+	XXX_unrecognize
