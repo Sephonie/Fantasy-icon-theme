@@ -1653,4 +1653,79 @@ func (*MessageList) ProtoMessage()               {}
 func (*MessageList) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{19} }
 
 func (m *MessageList) GetMessage() []*MessageList_Message {
-	if
+	if m != nil {
+		return m.Message
+	}
+	return nil
+}
+
+type MessageList_Message struct {
+	Name             *string `protobuf:"bytes,2,req,name=name" json:"name,omitempty"`
+	Count            *int32  `protobuf:"varint,3,req,name=count" json:"count,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *MessageList_Message) Reset()                    { *m = MessageList_Message{} }
+func (m *MessageList_Message) String() string            { return proto.CompactTextString(m) }
+func (*MessageList_Message) ProtoMessage()               {}
+func (*MessageList_Message) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{19, 0} }
+
+func (m *MessageList_Message) GetName() string {
+	if m != nil && m.Name != nil {
+		return *m.Name
+	}
+	return ""
+}
+
+func (m *MessageList_Message) GetCount() int32 {
+	if m != nil && m.Count != nil {
+		return *m.Count
+	}
+	return 0
+}
+
+type Strings struct {
+	StringField      *string `protobuf:"bytes,1,opt,name=string_field,json=stringField" json:"string_field,omitempty"`
+	BytesField       []byte  `protobuf:"bytes,2,opt,name=bytes_field,json=bytesField" json:"bytes_field,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *Strings) Reset()                    { *m = Strings{} }
+func (m *Strings) String() string            { return proto.CompactTextString(m) }
+func (*Strings) ProtoMessage()               {}
+func (*Strings) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{20} }
+
+func (m *Strings) GetStringField() string {
+	if m != nil && m.StringField != nil {
+		return *m.StringField
+	}
+	return ""
+}
+
+func (m *Strings) GetBytesField() []byte {
+	if m != nil {
+		return m.BytesField
+	}
+	return nil
+}
+
+type Defaults struct {
+	// Default-valued fields of all basic types.
+	// Same as GoTest, but copied here to make testing easier.
+	F_Bool    *bool           `protobuf:"varint,1,opt,name=F_Bool,json=FBool,def=1" json:"F_Bool,omitempty"`
+	F_Int32   *int32          `protobuf:"varint,2,opt,name=F_Int32,json=FInt32,def=32" json:"F_Int32,omitempty"`
+	F_Int64   *int64          `protobuf:"varint,3,opt,name=F_Int64,json=FInt64,def=64" json:"F_Int64,omitempty"`
+	F_Fixed32 *uint32         `protobuf:"fixed32,4,opt,name=F_Fixed32,json=FFixed32,def=320" json:"F_Fixed32,omitempty"`
+	F_Fixed64 *uint64         `protobuf:"fixed64,5,opt,name=F_Fixed64,json=FFixed64,def=640" json:"F_Fixed64,omitempty"`
+	F_Uint32  *uint32         `protobuf:"varint,6,opt,name=F_Uint32,json=FUint32,def=3200" json:"F_Uint32,omitempty"`
+	F_Uint64  *uint64         `protobuf:"varint,7,opt,name=F_Uint64,json=FUint64,def=6400" json:"F_Uint64,omitempty"`
+	F_Float   *float32        `protobuf:"fixed32,8,opt,name=F_Float,json=FFloat,def=314159" json:"F_Float,omitempty"`
+	F_Double  *float64        `protobuf:"fixed64,9,opt,name=F_Double,json=FDouble,def=271828" json:"F_Double,omitempty"`
+	F_String  *string         `protobuf:"bytes,10,opt,name=F_String,json=FString,def=hello, \"world!\"\n" json:"F_String,omitempty"`
+	F_Bytes   []byte          `protobuf:"bytes,11,opt,name=F_Bytes,json=FBytes,def=Bignose" json:"F_Bytes,omitempty"`
+	F_Sint32  *int32          `protobuf:"zigzag32,12,opt,name=F_Sint32,json=FSint32,def=-32" json:"F_Sint32,omitempty"`
+	F_Sint64  *int64          `protobuf:"zigzag64,13,opt,name=F_Sint64,json=FSint64,def=-64" json:"F_Sint64,omitempty"`
+	F_Enum    *Defaults_Color `protobuf:"varint,14,opt,name=F_Enum,json=FEnum,enum=testdata.Defaults_Color,def=1" json:"F_Enum,omitempty"`
+	// More fields with crazy defaults.
+	F_Pinf *float32 `protobuf:"fixed32,15,opt,name=F_Pinf,json=FPinf,def=inf" json:"F_Pinf,omitempty"`
+	F_Ninf *float32 `pro
