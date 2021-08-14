@@ -1551,4 +1551,106 @@ type ComplexExtension struct {
 	First            *int32  `protobuf:"varint,1,opt,name=first" json:"first,omitempty"`
 	Second           *int32  `protobuf:"varint,2,opt,name=second" json:"second,omitempty"`
 	Third            []int32 `protobuf:"varint,3,rep,name=third" json:"third,omitempty"`
-	XXX_unrecognize
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *ComplexExtension) Reset()                    { *m = ComplexExtension{} }
+func (m *ComplexExtension) String() string            { return proto.CompactTextString(m) }
+func (*ComplexExtension) ProtoMessage()               {}
+func (*ComplexExtension) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{15} }
+
+func (m *ComplexExtension) GetFirst() int32 {
+	if m != nil && m.First != nil {
+		return *m.First
+	}
+	return 0
+}
+
+func (m *ComplexExtension) GetSecond() int32 {
+	if m != nil && m.Second != nil {
+		return *m.Second
+	}
+	return 0
+}
+
+func (m *ComplexExtension) GetThird() []int32 {
+	if m != nil {
+		return m.Third
+	}
+	return nil
+}
+
+type DefaultsMessage struct {
+	proto.XXX_InternalExtensions `json:"-"`
+	XXX_unrecognized             []byte `json:"-"`
+}
+
+func (m *DefaultsMessage) Reset()                    { *m = DefaultsMessage{} }
+func (m *DefaultsMessage) String() string            { return proto.CompactTextString(m) }
+func (*DefaultsMessage) ProtoMessage()               {}
+func (*DefaultsMessage) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{16} }
+
+var extRange_DefaultsMessage = []proto.ExtensionRange{
+	{Start: 100, End: 536870911},
+}
+
+func (*DefaultsMessage) ExtensionRangeArray() []proto.ExtensionRange {
+	return extRange_DefaultsMessage
+}
+
+type MyMessageSet struct {
+	proto.XXX_InternalExtensions `json:"-"`
+	XXX_unrecognized             []byte `json:"-"`
+}
+
+func (m *MyMessageSet) Reset()                    { *m = MyMessageSet{} }
+func (m *MyMessageSet) String() string            { return proto.CompactTextString(m) }
+func (*MyMessageSet) ProtoMessage()               {}
+func (*MyMessageSet) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{17} }
+
+func (m *MyMessageSet) Marshal() ([]byte, error) {
+	return proto.MarshalMessageSet(&m.XXX_InternalExtensions)
+}
+func (m *MyMessageSet) Unmarshal(buf []byte) error {
+	return proto.UnmarshalMessageSet(buf, &m.XXX_InternalExtensions)
+}
+func (m *MyMessageSet) MarshalJSON() ([]byte, error) {
+	return proto.MarshalMessageSetJSON(&m.XXX_InternalExtensions)
+}
+func (m *MyMessageSet) UnmarshalJSON(buf []byte) error {
+	return proto.UnmarshalMessageSetJSON(buf, &m.XXX_InternalExtensions)
+}
+
+// ensure MyMessageSet satisfies proto.Marshaler and proto.Unmarshaler
+var _ proto.Marshaler = (*MyMessageSet)(nil)
+var _ proto.Unmarshaler = (*MyMessageSet)(nil)
+
+var extRange_MyMessageSet = []proto.ExtensionRange{
+	{Start: 100, End: 2147483646},
+}
+
+func (*MyMessageSet) ExtensionRangeArray() []proto.ExtensionRange {
+	return extRange_MyMessageSet
+}
+
+type Empty struct {
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *Empty) Reset()                    { *m = Empty{} }
+func (m *Empty) String() string            { return proto.CompactTextString(m) }
+func (*Empty) ProtoMessage()               {}
+func (*Empty) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{18} }
+
+type MessageList struct {
+	Message          []*MessageList_Message `protobuf:"group,1,rep,name=Message,json=message" json:"message,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *MessageList) Reset()                    { *m = MessageList{} }
+func (m *MessageList) String() string            { return proto.CompactTextString(m) }
+func (*MessageList) ProtoMessage()               {}
+func (*MessageList) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{19} }
+
+func (m *MessageList) GetMessage() []*MessageList_Message {
+	if
