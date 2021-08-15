@@ -1728,4 +1728,130 @@ type Defaults struct {
 	F_Enum    *Defaults_Color `protobuf:"varint,14,opt,name=F_Enum,json=FEnum,enum=testdata.Defaults_Color,def=1" json:"F_Enum,omitempty"`
 	// More fields with crazy defaults.
 	F_Pinf *float32 `protobuf:"fixed32,15,opt,name=F_Pinf,json=FPinf,def=inf" json:"F_Pinf,omitempty"`
-	F_Ninf *float32 `pro
+	F_Ninf *float32 `protobuf:"fixed32,16,opt,name=F_Ninf,json=FNinf,def=-inf" json:"F_Ninf,omitempty"`
+	F_Nan  *float32 `protobuf:"fixed32,17,opt,name=F_Nan,json=FNan,def=nan" json:"F_Nan,omitempty"`
+	// Sub-message.
+	Sub *SubDefaults `protobuf:"bytes,18,opt,name=sub" json:"sub,omitempty"`
+	// Redundant but explicit defaults.
+	StrZero          *string `protobuf:"bytes,19,opt,name=str_zero,json=strZero,def=" json:"str_zero,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *Defaults) Reset()                    { *m = Defaults{} }
+func (m *Defaults) String() string            { return proto.CompactTextString(m) }
+func (*Defaults) ProtoMessage()               {}
+func (*Defaults) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{21} }
+
+const Default_Defaults_F_Bool bool = true
+const Default_Defaults_F_Int32 int32 = 32
+const Default_Defaults_F_Int64 int64 = 64
+const Default_Defaults_F_Fixed32 uint32 = 320
+const Default_Defaults_F_Fixed64 uint64 = 640
+const Default_Defaults_F_Uint32 uint32 = 3200
+const Default_Defaults_F_Uint64 uint64 = 6400
+const Default_Defaults_F_Float float32 = 314159
+const Default_Defaults_F_Double float64 = 271828
+const Default_Defaults_F_String string = "hello, \"world!\"\n"
+
+var Default_Defaults_F_Bytes []byte = []byte("Bignose")
+
+const Default_Defaults_F_Sint32 int32 = -32
+const Default_Defaults_F_Sint64 int64 = -64
+const Default_Defaults_F_Enum Defaults_Color = Defaults_GREEN
+
+var Default_Defaults_F_Pinf float32 = float32(math.Inf(1))
+var Default_Defaults_F_Ninf float32 = float32(math.Inf(-1))
+var Default_Defaults_F_Nan float32 = float32(math.NaN())
+
+func (m *Defaults) GetF_Bool() bool {
+	if m != nil && m.F_Bool != nil {
+		return *m.F_Bool
+	}
+	return Default_Defaults_F_Bool
+}
+
+func (m *Defaults) GetF_Int32() int32 {
+	if m != nil && m.F_Int32 != nil {
+		return *m.F_Int32
+	}
+	return Default_Defaults_F_Int32
+}
+
+func (m *Defaults) GetF_Int64() int64 {
+	if m != nil && m.F_Int64 != nil {
+		return *m.F_Int64
+	}
+	return Default_Defaults_F_Int64
+}
+
+func (m *Defaults) GetF_Fixed32() uint32 {
+	if m != nil && m.F_Fixed32 != nil {
+		return *m.F_Fixed32
+	}
+	return Default_Defaults_F_Fixed32
+}
+
+func (m *Defaults) GetF_Fixed64() uint64 {
+	if m != nil && m.F_Fixed64 != nil {
+		return *m.F_Fixed64
+	}
+	return Default_Defaults_F_Fixed64
+}
+
+func (m *Defaults) GetF_Uint32() uint32 {
+	if m != nil && m.F_Uint32 != nil {
+		return *m.F_Uint32
+	}
+	return Default_Defaults_F_Uint32
+}
+
+func (m *Defaults) GetF_Uint64() uint64 {
+	if m != nil && m.F_Uint64 != nil {
+		return *m.F_Uint64
+	}
+	return Default_Defaults_F_Uint64
+}
+
+func (m *Defaults) GetF_Float() float32 {
+	if m != nil && m.F_Float != nil {
+		return *m.F_Float
+	}
+	return Default_Defaults_F_Float
+}
+
+func (m *Defaults) GetF_Double() float64 {
+	if m != nil && m.F_Double != nil {
+		return *m.F_Double
+	}
+	return Default_Defaults_F_Double
+}
+
+func (m *Defaults) GetF_String() string {
+	if m != nil && m.F_String != nil {
+		return *m.F_String
+	}
+	return Default_Defaults_F_String
+}
+
+func (m *Defaults) GetF_Bytes() []byte {
+	if m != nil && m.F_Bytes != nil {
+		return m.F_Bytes
+	}
+	return append([]byte(nil), Default_Defaults_F_Bytes...)
+}
+
+func (m *Defaults) GetF_Sint32() int32 {
+	if m != nil && m.F_Sint32 != nil {
+		return *m.F_Sint32
+	}
+	return Default_Defaults_F_Sint32
+}
+
+func (m *Defaults) GetF_Sint64() int64 {
+	if m != nil && m.F_Sint64 != nil {
+		return *m.F_Sint64
+	}
+	return Default_Defaults_F_Sint64
+}
+
+func (m *Defa
