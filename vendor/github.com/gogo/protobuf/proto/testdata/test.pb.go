@@ -1854,4 +1854,136 @@ func (m *Defaults) GetF_Sint64() int64 {
 	return Default_Defaults_F_Sint64
 }
 
-func (m *Defa
+func (m *Defaults) GetF_Enum() Defaults_Color {
+	if m != nil && m.F_Enum != nil {
+		return *m.F_Enum
+	}
+	return Default_Defaults_F_Enum
+}
+
+func (m *Defaults) GetF_Pinf() float32 {
+	if m != nil && m.F_Pinf != nil {
+		return *m.F_Pinf
+	}
+	return Default_Defaults_F_Pinf
+}
+
+func (m *Defaults) GetF_Ninf() float32 {
+	if m != nil && m.F_Ninf != nil {
+		return *m.F_Ninf
+	}
+	return Default_Defaults_F_Ninf
+}
+
+func (m *Defaults) GetF_Nan() float32 {
+	if m != nil && m.F_Nan != nil {
+		return *m.F_Nan
+	}
+	return Default_Defaults_F_Nan
+}
+
+func (m *Defaults) GetSub() *SubDefaults {
+	if m != nil {
+		return m.Sub
+	}
+	return nil
+}
+
+func (m *Defaults) GetStrZero() string {
+	if m != nil && m.StrZero != nil {
+		return *m.StrZero
+	}
+	return ""
+}
+
+type SubDefaults struct {
+	N                *int64 `protobuf:"varint,1,opt,name=n,def=7" json:"n,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *SubDefaults) Reset()                    { *m = SubDefaults{} }
+func (m *SubDefaults) String() string            { return proto.CompactTextString(m) }
+func (*SubDefaults) ProtoMessage()               {}
+func (*SubDefaults) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{22} }
+
+const Default_SubDefaults_N int64 = 7
+
+func (m *SubDefaults) GetN() int64 {
+	if m != nil && m.N != nil {
+		return *m.N
+	}
+	return Default_SubDefaults_N
+}
+
+type RepeatedEnum struct {
+	Color            []RepeatedEnum_Color `protobuf:"varint,1,rep,name=color,enum=testdata.RepeatedEnum_Color" json:"color,omitempty"`
+	XXX_unrecognized []byte               `json:"-"`
+}
+
+func (m *RepeatedEnum) Reset()                    { *m = RepeatedEnum{} }
+func (m *RepeatedEnum) String() string            { return proto.CompactTextString(m) }
+func (*RepeatedEnum) ProtoMessage()               {}
+func (*RepeatedEnum) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{23} }
+
+func (m *RepeatedEnum) GetColor() []RepeatedEnum_Color {
+	if m != nil {
+		return m.Color
+	}
+	return nil
+}
+
+type MoreRepeated struct {
+	Bools            []bool   `protobuf:"varint,1,rep,name=bools" json:"bools,omitempty"`
+	BoolsPacked      []bool   `protobuf:"varint,2,rep,packed,name=bools_packed,json=boolsPacked" json:"bools_packed,omitempty"`
+	Ints             []int32  `protobuf:"varint,3,rep,name=ints" json:"ints,omitempty"`
+	IntsPacked       []int32  `protobuf:"varint,4,rep,packed,name=ints_packed,json=intsPacked" json:"ints_packed,omitempty"`
+	Int64SPacked     []int64  `protobuf:"varint,7,rep,packed,name=int64s_packed,json=int64sPacked" json:"int64s_packed,omitempty"`
+	Strings          []string `protobuf:"bytes,5,rep,name=strings" json:"strings,omitempty"`
+	Fixeds           []uint32 `protobuf:"fixed32,6,rep,name=fixeds" json:"fixeds,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
+}
+
+func (m *MoreRepeated) Reset()                    { *m = MoreRepeated{} }
+func (m *MoreRepeated) String() string            { return proto.CompactTextString(m) }
+func (*MoreRepeated) ProtoMessage()               {}
+func (*MoreRepeated) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{24} }
+
+func (m *MoreRepeated) GetBools() []bool {
+	if m != nil {
+		return m.Bools
+	}
+	return nil
+}
+
+func (m *MoreRepeated) GetBoolsPacked() []bool {
+	if m != nil {
+		return m.BoolsPacked
+	}
+	return nil
+}
+
+func (m *MoreRepeated) GetInts() []int32 {
+	if m != nil {
+		return m.Ints
+	}
+	return nil
+}
+
+func (m *MoreRepeated) GetIntsPacked() []int32 {
+	if m != nil {
+		return m.IntsPacked
+	}
+	return nil
+}
+
+func (m *MoreRepeated) GetInt64SPacked() []int64 {
+	if m != nil {
+		return m.Int64SPacked
+	}
+	return nil
+}
+
+func (m *MoreRepeated) GetStrings() []string {
+	if m != nil {
+		return m.Strings
+	}
