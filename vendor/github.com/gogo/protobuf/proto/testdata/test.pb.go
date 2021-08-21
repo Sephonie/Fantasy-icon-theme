@@ -1987,3 +1987,117 @@ func (m *MoreRepeated) GetStrings() []string {
 	if m != nil {
 		return m.Strings
 	}
+	return nil
+}
+
+func (m *MoreRepeated) GetFixeds() []uint32 {
+	if m != nil {
+		return m.Fixeds
+	}
+	return nil
+}
+
+type GroupOld struct {
+	G                *GroupOld_G `protobuf:"group,101,opt,name=G,json=g" json:"g,omitempty"`
+	XXX_unrecognized []byte      `json:"-"`
+}
+
+func (m *GroupOld) Reset()                    { *m = GroupOld{} }
+func (m *GroupOld) String() string            { return proto.CompactTextString(m) }
+func (*GroupOld) ProtoMessage()               {}
+func (*GroupOld) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{25} }
+
+func (m *GroupOld) GetG() *GroupOld_G {
+	if m != nil {
+		return m.G
+	}
+	return nil
+}
+
+type GroupOld_G struct {
+	X                *int32 `protobuf:"varint,2,opt,name=x" json:"x,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *GroupOld_G) Reset()                    { *m = GroupOld_G{} }
+func (m *GroupOld_G) String() string            { return proto.CompactTextString(m) }
+func (*GroupOld_G) ProtoMessage()               {}
+func (*GroupOld_G) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{25, 0} }
+
+func (m *GroupOld_G) GetX() int32 {
+	if m != nil && m.X != nil {
+		return *m.X
+	}
+	return 0
+}
+
+type GroupNew struct {
+	G                *GroupNew_G `protobuf:"group,101,opt,name=G,json=g" json:"g,omitempty"`
+	XXX_unrecognized []byte      `json:"-"`
+}
+
+func (m *GroupNew) Reset()                    { *m = GroupNew{} }
+func (m *GroupNew) String() string            { return proto.CompactTextString(m) }
+func (*GroupNew) ProtoMessage()               {}
+func (*GroupNew) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{26} }
+
+func (m *GroupNew) GetG() *GroupNew_G {
+	if m != nil {
+		return m.G
+	}
+	return nil
+}
+
+type GroupNew_G struct {
+	X                *int32 `protobuf:"varint,2,opt,name=x" json:"x,omitempty"`
+	Y                *int32 `protobuf:"varint,3,opt,name=y" json:"y,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *GroupNew_G) Reset()                    { *m = GroupNew_G{} }
+func (m *GroupNew_G) String() string            { return proto.CompactTextString(m) }
+func (*GroupNew_G) ProtoMessage()               {}
+func (*GroupNew_G) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{26, 0} }
+
+func (m *GroupNew_G) GetX() int32 {
+	if m != nil && m.X != nil {
+		return *m.X
+	}
+	return 0
+}
+
+func (m *GroupNew_G) GetY() int32 {
+	if m != nil && m.Y != nil {
+		return *m.Y
+	}
+	return 0
+}
+
+type FloatingPoint struct {
+	F                *float64 `protobuf:"fixed64,1,req,name=f" json:"f,omitempty"`
+	Exact            *bool    `protobuf:"varint,2,opt,name=exact" json:"exact,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
+}
+
+func (m *FloatingPoint) Reset()                    { *m = FloatingPoint{} }
+func (m *FloatingPoint) String() string            { return proto.CompactTextString(m) }
+func (*FloatingPoint) ProtoMessage()               {}
+func (*FloatingPoint) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{27} }
+
+func (m *FloatingPoint) GetF() float64 {
+	if m != nil && m.F != nil {
+		return *m.F
+	}
+	return 0
+}
+
+func (m *FloatingPoint) GetExact() bool {
+	if m != nil && m.Exact != nil {
+		return *m.Exact
+	}
+	return false
+}
+
+type MessageWithMap struct {
+	NameMapping      map[int32]string         `protobuf:"bytes,1,rep,name=name_mapping,json=nameMapping" json:"name_mapping,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	MsgMapping       map[int64]*FloatingPoint `protobuf:"bytes,2,rep,name=msg_mapping,json=msgMapping" json:"msg_mapping,omitempty" protobuf_key:"zigzag64,1,opt,name=key" protob
