@@ -2609,4 +2609,118 @@ func _Oneof_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) 
 		}
 		msg := new(Oneof_F_Group)
 		err := b.DecodeGroup(msg)
-		m.
+		m.Union = &Oneof_FGroup{msg}
+		return true, err
+	case 536870911: // union.F_Largest_Tag
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Oneof_F_Largest_Tag{int32(x)}
+		return true, err
+	case 100: // tormato.value
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Tormato = &Oneof_Value{int32(x)}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _Oneof_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*Oneof)
+	// union
+	switch x := m.Union.(type) {
+	case *Oneof_F_Bool:
+		n += proto.SizeVarint(1<<3 | proto.WireVarint)
+		n += 1
+	case *Oneof_F_Int32:
+		n += proto.SizeVarint(2<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.F_Int32))
+	case *Oneof_F_Int64:
+		n += proto.SizeVarint(3<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.F_Int64))
+	case *Oneof_F_Fixed32:
+		n += proto.SizeVarint(4<<3 | proto.WireFixed32)
+		n += 4
+	case *Oneof_F_Fixed64:
+		n += proto.SizeVarint(5<<3 | proto.WireFixed64)
+		n += 8
+	case *Oneof_F_Uint32:
+		n += proto.SizeVarint(6<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.F_Uint32))
+	case *Oneof_F_Uint64:
+		n += proto.SizeVarint(7<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.F_Uint64))
+	case *Oneof_F_Float:
+		n += proto.SizeVarint(8<<3 | proto.WireFixed32)
+		n += 4
+	case *Oneof_F_Double:
+		n += proto.SizeVarint(9<<3 | proto.WireFixed64)
+		n += 8
+	case *Oneof_F_String:
+		n += proto.SizeVarint(10<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.F_String)))
+		n += len(x.F_String)
+	case *Oneof_F_Bytes:
+		n += proto.SizeVarint(11<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.F_Bytes)))
+		n += len(x.F_Bytes)
+	case *Oneof_F_Sint32:
+		n += proto.SizeVarint(12<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64((uint32(x.F_Sint32) << 1) ^ uint32((int32(x.F_Sint32) >> 31))))
+	case *Oneof_F_Sint64:
+		n += proto.SizeVarint(13<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(uint64(x.F_Sint64<<1) ^ uint64((int64(x.F_Sint64) >> 63))))
+	case *Oneof_F_Enum:
+		n += proto.SizeVarint(14<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.F_Enum))
+	case *Oneof_F_Message:
+		s := proto.Size(x.F_Message)
+		n += proto.SizeVarint(15<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *Oneof_FGroup:
+		n += proto.SizeVarint(16<<3 | proto.WireStartGroup)
+		n += proto.Size(x.FGroup)
+		n += proto.SizeVarint(16<<3 | proto.WireEndGroup)
+	case *Oneof_F_Largest_Tag:
+		n += proto.SizeVarint(536870911<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.F_Largest_Tag))
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	// tormato
+	switch x := m.Tormato.(type) {
+	case *Oneof_Value:
+		n += proto.SizeVarint(100<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.Value))
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+type Oneof_F_Group struct {
+	X                *int32 `protobuf:"varint,17,opt,name=x" json:"x,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *Oneof_F_Group) Reset()                    { *m = Oneof_F_Group{} }
+func (m *Oneof_F_Group) String() string            { return proto.CompactTextString(m) }
+func (*Oneof_F_Group) ProtoMessage()               {}
+func (*Oneof_F_Group) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{29, 0} }
+
+func (m *Oneof_F_Group) GetX() int32 {
+	if m != nil && m.X != nil {
+		return *m.X
+	}
+	return 0
+}
+
+type Communique str
