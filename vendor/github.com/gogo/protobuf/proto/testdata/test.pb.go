@@ -2484,4 +2484,129 @@ func _Oneof_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 	}
 	// tormato
 	switch x := m.Tormato.(type) {
-	ca
+	case *Oneof_Value:
+		_ = b.EncodeVarint(100<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.Value))
+	case nil:
+	default:
+		return fmt.Errorf("Oneof.Tormato has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _Oneof_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*Oneof)
+	switch tag {
+	case 1: // union.F_Bool
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Oneof_F_Bool{x != 0}
+		return true, err
+	case 2: // union.F_Int32
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Oneof_F_Int32{int32(x)}
+		return true, err
+	case 3: // union.F_Int64
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Oneof_F_Int64{int64(x)}
+		return true, err
+	case 4: // union.F_Fixed32
+		if wire != proto.WireFixed32 {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeFixed32()
+		m.Union = &Oneof_F_Fixed32{uint32(x)}
+		return true, err
+	case 5: // union.F_Fixed64
+		if wire != proto.WireFixed64 {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeFixed64()
+		m.Union = &Oneof_F_Fixed64{x}
+		return true, err
+	case 6: // union.F_Uint32
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Oneof_F_Uint32{uint32(x)}
+		return true, err
+	case 7: // union.F_Uint64
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Oneof_F_Uint64{x}
+		return true, err
+	case 8: // union.F_Float
+		if wire != proto.WireFixed32 {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeFixed32()
+		m.Union = &Oneof_F_Float{math.Float32frombits(uint32(x))}
+		return true, err
+	case 9: // union.F_Double
+		if wire != proto.WireFixed64 {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeFixed64()
+		m.Union = &Oneof_F_Double{math.Float64frombits(x)}
+		return true, err
+	case 10: // union.F_String
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeStringBytes()
+		m.Union = &Oneof_F_String{x}
+		return true, err
+	case 11: // union.F_Bytes
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.Union = &Oneof_F_Bytes{x}
+		return true, err
+	case 12: // union.F_Sint32
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeZigzag32()
+		m.Union = &Oneof_F_Sint32{int32(x)}
+		return true, err
+	case 13: // union.F_Sint64
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeZigzag64()
+		m.Union = &Oneof_F_Sint64{int64(x)}
+		return true, err
+	case 14: // union.F_Enum
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Oneof_F_Enum{MyMessage_Color(x)}
+		return true, err
+	case 15: // union.F_Message
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(GoTestField)
+		err := b.DecodeMessage(msg)
+		m.Union = &Oneof_F_Message{msg}
+		return true, err
+	case 16: // union.f_group
+		if wire != proto.WireStartGroup {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(Oneof_F_Group)
+		err := b.DecodeGroup(msg)
+		m.
