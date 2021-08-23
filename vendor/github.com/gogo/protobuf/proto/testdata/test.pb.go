@@ -2364,4 +2364,124 @@ func (m *Oneof) GetF_Enum() MyMessage_Color {
 
 func (m *Oneof) GetF_Message() *GoTestField {
 	if x, ok := m.GetUnion().(*Oneof_F_Message); ok {
-		return x.F_Mes
+		return x.F_Message
+	}
+	return nil
+}
+
+func (m *Oneof) GetFGroup() *Oneof_F_Group {
+	if x, ok := m.GetUnion().(*Oneof_FGroup); ok {
+		return x.FGroup
+	}
+	return nil
+}
+
+func (m *Oneof) GetF_Largest_Tag() int32 {
+	if x, ok := m.GetUnion().(*Oneof_F_Largest_Tag); ok {
+		return x.F_Largest_Tag
+	}
+	return 0
+}
+
+func (m *Oneof) GetValue() int32 {
+	if x, ok := m.GetTormato().(*Oneof_Value); ok {
+		return x.Value
+	}
+	return 0
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*Oneof) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _Oneof_OneofMarshaler, _Oneof_OneofUnmarshaler, _Oneof_OneofSizer, []interface{}{
+		(*Oneof_F_Bool)(nil),
+		(*Oneof_F_Int32)(nil),
+		(*Oneof_F_Int64)(nil),
+		(*Oneof_F_Fixed32)(nil),
+		(*Oneof_F_Fixed64)(nil),
+		(*Oneof_F_Uint32)(nil),
+		(*Oneof_F_Uint64)(nil),
+		(*Oneof_F_Float)(nil),
+		(*Oneof_F_Double)(nil),
+		(*Oneof_F_String)(nil),
+		(*Oneof_F_Bytes)(nil),
+		(*Oneof_F_Sint32)(nil),
+		(*Oneof_F_Sint64)(nil),
+		(*Oneof_F_Enum)(nil),
+		(*Oneof_F_Message)(nil),
+		(*Oneof_FGroup)(nil),
+		(*Oneof_F_Largest_Tag)(nil),
+		(*Oneof_Value)(nil),
+	}
+}
+
+func _Oneof_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*Oneof)
+	// union
+	switch x := m.Union.(type) {
+	case *Oneof_F_Bool:
+		t := uint64(0)
+		if x.F_Bool {
+			t = 1
+		}
+		_ = b.EncodeVarint(1<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(t)
+	case *Oneof_F_Int32:
+		_ = b.EncodeVarint(2<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.F_Int32))
+	case *Oneof_F_Int64:
+		_ = b.EncodeVarint(3<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.F_Int64))
+	case *Oneof_F_Fixed32:
+		_ = b.EncodeVarint(4<<3 | proto.WireFixed32)
+		_ = b.EncodeFixed32(uint64(x.F_Fixed32))
+	case *Oneof_F_Fixed64:
+		_ = b.EncodeVarint(5<<3 | proto.WireFixed64)
+		_ = b.EncodeFixed64(uint64(x.F_Fixed64))
+	case *Oneof_F_Uint32:
+		_ = b.EncodeVarint(6<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.F_Uint32))
+	case *Oneof_F_Uint64:
+		_ = b.EncodeVarint(7<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.F_Uint64))
+	case *Oneof_F_Float:
+		_ = b.EncodeVarint(8<<3 | proto.WireFixed32)
+		_ = b.EncodeFixed32(uint64(math.Float32bits(x.F_Float)))
+	case *Oneof_F_Double:
+		_ = b.EncodeVarint(9<<3 | proto.WireFixed64)
+		_ = b.EncodeFixed64(math.Float64bits(x.F_Double))
+	case *Oneof_F_String:
+		_ = b.EncodeVarint(10<<3 | proto.WireBytes)
+		_ = b.EncodeStringBytes(x.F_String)
+	case *Oneof_F_Bytes:
+		_ = b.EncodeVarint(11<<3 | proto.WireBytes)
+		_ = b.EncodeRawBytes(x.F_Bytes)
+	case *Oneof_F_Sint32:
+		_ = b.EncodeVarint(12<<3 | proto.WireVarint)
+		_ = b.EncodeZigzag32(uint64(x.F_Sint32))
+	case *Oneof_F_Sint64:
+		_ = b.EncodeVarint(13<<3 | proto.WireVarint)
+		_ = b.EncodeZigzag64(uint64(x.F_Sint64))
+	case *Oneof_F_Enum:
+		_ = b.EncodeVarint(14<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.F_Enum))
+	case *Oneof_F_Message:
+		_ = b.EncodeVarint(15<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.F_Message); err != nil {
+			return err
+		}
+	case *Oneof_FGroup:
+		_ = b.EncodeVarint(16<<3 | proto.WireStartGroup)
+		if err := b.Marshal(x.FGroup); err != nil {
+			return err
+		}
+		_ = b.EncodeVarint(16<<3 | proto.WireEndGroup)
+	case *Oneof_F_Largest_Tag:
+		_ = b.EncodeVarint(536870911<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.F_Largest_Tag))
+	case nil:
+	default:
+		return fmt.Errorf("Oneof.Union has unexpected type %T", x)
+	}
+	// tormato
+	switch x := m.Tormato.(type) {
+	ca
