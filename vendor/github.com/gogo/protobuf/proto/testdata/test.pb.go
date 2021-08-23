@@ -2214,3 +2214,154 @@ type Oneof_F_Sint32 struct {
 	F_Sint32 int32 `protobuf:"zigzag32,12,opt,name=F_Sint32,json=FSint32,oneof"`
 }
 type Oneof_F_Sint64 struct {
+	F_Sint64 int64 `protobuf:"zigzag64,13,opt,name=F_Sint64,json=FSint64,oneof"`
+}
+type Oneof_F_Enum struct {
+	F_Enum MyMessage_Color `protobuf:"varint,14,opt,name=F_Enum,json=FEnum,enum=testdata.MyMessage_Color,oneof"`
+}
+type Oneof_F_Message struct {
+	F_Message *GoTestField `protobuf:"bytes,15,opt,name=F_Message,json=FMessage,oneof"`
+}
+type Oneof_FGroup struct {
+	FGroup *Oneof_F_Group `protobuf:"group,16,opt,name=F_Group,json=fGroup,oneof"`
+}
+type Oneof_F_Largest_Tag struct {
+	F_Largest_Tag int32 `protobuf:"varint,536870911,opt,name=F_Largest_Tag,json=FLargestTag,oneof"`
+}
+type Oneof_Value struct {
+	Value int32 `protobuf:"varint,100,opt,name=value,oneof"`
+}
+
+func (*Oneof_F_Bool) isOneof_Union()        {}
+func (*Oneof_F_Int32) isOneof_Union()       {}
+func (*Oneof_F_Int64) isOneof_Union()       {}
+func (*Oneof_F_Fixed32) isOneof_Union()     {}
+func (*Oneof_F_Fixed64) isOneof_Union()     {}
+func (*Oneof_F_Uint32) isOneof_Union()      {}
+func (*Oneof_F_Uint64) isOneof_Union()      {}
+func (*Oneof_F_Float) isOneof_Union()       {}
+func (*Oneof_F_Double) isOneof_Union()      {}
+func (*Oneof_F_String) isOneof_Union()      {}
+func (*Oneof_F_Bytes) isOneof_Union()       {}
+func (*Oneof_F_Sint32) isOneof_Union()      {}
+func (*Oneof_F_Sint64) isOneof_Union()      {}
+func (*Oneof_F_Enum) isOneof_Union()        {}
+func (*Oneof_F_Message) isOneof_Union()     {}
+func (*Oneof_FGroup) isOneof_Union()        {}
+func (*Oneof_F_Largest_Tag) isOneof_Union() {}
+func (*Oneof_Value) isOneof_Tormato()       {}
+
+func (m *Oneof) GetUnion() isOneof_Union {
+	if m != nil {
+		return m.Union
+	}
+	return nil
+}
+func (m *Oneof) GetTormato() isOneof_Tormato {
+	if m != nil {
+		return m.Tormato
+	}
+	return nil
+}
+
+func (m *Oneof) GetF_Bool() bool {
+	if x, ok := m.GetUnion().(*Oneof_F_Bool); ok {
+		return x.F_Bool
+	}
+	return false
+}
+
+func (m *Oneof) GetF_Int32() int32 {
+	if x, ok := m.GetUnion().(*Oneof_F_Int32); ok {
+		return x.F_Int32
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Int64() int64 {
+	if x, ok := m.GetUnion().(*Oneof_F_Int64); ok {
+		return x.F_Int64
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Fixed32() uint32 {
+	if x, ok := m.GetUnion().(*Oneof_F_Fixed32); ok {
+		return x.F_Fixed32
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Fixed64() uint64 {
+	if x, ok := m.GetUnion().(*Oneof_F_Fixed64); ok {
+		return x.F_Fixed64
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Uint32() uint32 {
+	if x, ok := m.GetUnion().(*Oneof_F_Uint32); ok {
+		return x.F_Uint32
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Uint64() uint64 {
+	if x, ok := m.GetUnion().(*Oneof_F_Uint64); ok {
+		return x.F_Uint64
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Float() float32 {
+	if x, ok := m.GetUnion().(*Oneof_F_Float); ok {
+		return x.F_Float
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Double() float64 {
+	if x, ok := m.GetUnion().(*Oneof_F_Double); ok {
+		return x.F_Double
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_String() string {
+	if x, ok := m.GetUnion().(*Oneof_F_String); ok {
+		return x.F_String
+	}
+	return ""
+}
+
+func (m *Oneof) GetF_Bytes() []byte {
+	if x, ok := m.GetUnion().(*Oneof_F_Bytes); ok {
+		return x.F_Bytes
+	}
+	return nil
+}
+
+func (m *Oneof) GetF_Sint32() int32 {
+	if x, ok := m.GetUnion().(*Oneof_F_Sint32); ok {
+		return x.F_Sint32
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Sint64() int64 {
+	if x, ok := m.GetUnion().(*Oneof_F_Sint64); ok {
+		return x.F_Sint64
+	}
+	return 0
+}
+
+func (m *Oneof) GetF_Enum() MyMessage_Color {
+	if x, ok := m.GetUnion().(*Oneof_F_Enum); ok {
+		return x.F_Enum
+	}
+	return MyMessage_RED
+}
+
+func (m *Oneof) GetF_Message() *GoTestField {
+	if x, ok := m.GetUnion().(*Oneof_F_Message); ok {
+		return x.F_Mes
