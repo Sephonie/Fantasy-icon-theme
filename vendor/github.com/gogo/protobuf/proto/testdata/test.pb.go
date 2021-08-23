@@ -2100,4 +2100,117 @@ func (m *FloatingPoint) GetExact() bool {
 
 type MessageWithMap struct {
 	NameMapping      map[int32]string         `protobuf:"bytes,1,rep,name=name_mapping,json=nameMapping" json:"name_mapping,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	MsgMapping       map[int64]*FloatingPoint `protobuf:"bytes,2,rep,name=msg_mapping,json=msgMapping" json:"msg_mapping,omitempty" protobuf_key:"zigzag64,1,opt,name=key" protob
+	MsgMapping       map[int64]*FloatingPoint `protobuf:"bytes,2,rep,name=msg_mapping,json=msgMapping" json:"msg_mapping,omitempty" protobuf_key:"zigzag64,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ByteMapping      map[bool][]byte          `protobuf:"bytes,3,rep,name=byte_mapping,json=byteMapping" json:"byte_mapping,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	StrToStr         map[string]string        `protobuf:"bytes,4,rep,name=str_to_str,json=strToStr" json:"str_to_str,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	XXX_unrecognized []byte                   `json:"-"`
+}
+
+func (m *MessageWithMap) Reset()                    { *m = MessageWithMap{} }
+func (m *MessageWithMap) String() string            { return proto.CompactTextString(m) }
+func (*MessageWithMap) ProtoMessage()               {}
+func (*MessageWithMap) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{28} }
+
+func (m *MessageWithMap) GetNameMapping() map[int32]string {
+	if m != nil {
+		return m.NameMapping
+	}
+	return nil
+}
+
+func (m *MessageWithMap) GetMsgMapping() map[int64]*FloatingPoint {
+	if m != nil {
+		return m.MsgMapping
+	}
+	return nil
+}
+
+func (m *MessageWithMap) GetByteMapping() map[bool][]byte {
+	if m != nil {
+		return m.ByteMapping
+	}
+	return nil
+}
+
+func (m *MessageWithMap) GetStrToStr() map[string]string {
+	if m != nil {
+		return m.StrToStr
+	}
+	return nil
+}
+
+type Oneof struct {
+	// Types that are valid to be assigned to Union:
+	//	*Oneof_F_Bool
+	//	*Oneof_F_Int32
+	//	*Oneof_F_Int64
+	//	*Oneof_F_Fixed32
+	//	*Oneof_F_Fixed64
+	//	*Oneof_F_Uint32
+	//	*Oneof_F_Uint64
+	//	*Oneof_F_Float
+	//	*Oneof_F_Double
+	//	*Oneof_F_String
+	//	*Oneof_F_Bytes
+	//	*Oneof_F_Sint32
+	//	*Oneof_F_Sint64
+	//	*Oneof_F_Enum
+	//	*Oneof_F_Message
+	//	*Oneof_FGroup
+	//	*Oneof_F_Largest_Tag
+	Union isOneof_Union `protobuf_oneof:"union"`
+	// Types that are valid to be assigned to Tormato:
+	//	*Oneof_Value
+	Tormato          isOneof_Tormato `protobuf_oneof:"tormato"`
+	XXX_unrecognized []byte          `json:"-"`
+}
+
+func (m *Oneof) Reset()                    { *m = Oneof{} }
+func (m *Oneof) String() string            { return proto.CompactTextString(m) }
+func (*Oneof) ProtoMessage()               {}
+func (*Oneof) Descriptor() ([]byte, []int) { return fileDescriptorTest, []int{29} }
+
+type isOneof_Union interface {
+	isOneof_Union()
+}
+type isOneof_Tormato interface {
+	isOneof_Tormato()
+}
+
+type Oneof_F_Bool struct {
+	F_Bool bool `protobuf:"varint,1,opt,name=F_Bool,json=FBool,oneof"`
+}
+type Oneof_F_Int32 struct {
+	F_Int32 int32 `protobuf:"varint,2,opt,name=F_Int32,json=FInt32,oneof"`
+}
+type Oneof_F_Int64 struct {
+	F_Int64 int64 `protobuf:"varint,3,opt,name=F_Int64,json=FInt64,oneof"`
+}
+type Oneof_F_Fixed32 struct {
+	F_Fixed32 uint32 `protobuf:"fixed32,4,opt,name=F_Fixed32,json=FFixed32,oneof"`
+}
+type Oneof_F_Fixed64 struct {
+	F_Fixed64 uint64 `protobuf:"fixed64,5,opt,name=F_Fixed64,json=FFixed64,oneof"`
+}
+type Oneof_F_Uint32 struct {
+	F_Uint32 uint32 `protobuf:"varint,6,opt,name=F_Uint32,json=FUint32,oneof"`
+}
+type Oneof_F_Uint64 struct {
+	F_Uint64 uint64 `protobuf:"varint,7,opt,name=F_Uint64,json=FUint64,oneof"`
+}
+type Oneof_F_Float struct {
+	F_Float float32 `protobuf:"fixed32,8,opt,name=F_Float,json=FFloat,oneof"`
+}
+type Oneof_F_Double struct {
+	F_Double float64 `protobuf:"fixed64,9,opt,name=F_Double,json=FDouble,oneof"`
+}
+type Oneof_F_String struct {
+	F_String string `protobuf:"bytes,10,opt,name=F_String,json=FString,oneof"`
+}
+type Oneof_F_Bytes struct {
+	F_Bytes []byte `protobuf:"bytes,11,opt,name=F_Bytes,json=FBytes,oneof"`
+}
+type Oneof_F_Sint32 struct {
+	F_Sint32 int32 `protobuf:"zigzag32,12,opt,name=F_Sint32,json=FSint32,oneof"`
+}
+type Oneof_F_Sint64 struct {
