@@ -2847,4 +2847,133 @@ func _Communique_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 	switch x := m.Union.(type) {
 	case *Communique_Number:
 		_ = b.EncodeVarint(5<<3 | proto.WireVarint)
-		_ = b.EncodeVarint(uint64(x.N
+		_ = b.EncodeVarint(uint64(x.Number))
+	case *Communique_Name:
+		_ = b.EncodeVarint(6<<3 | proto.WireBytes)
+		_ = b.EncodeStringBytes(x.Name)
+	case *Communique_Data:
+		_ = b.EncodeVarint(7<<3 | proto.WireBytes)
+		_ = b.EncodeRawBytes(x.Data)
+	case *Communique_TempC:
+		_ = b.EncodeVarint(8<<3 | proto.WireFixed64)
+		_ = b.EncodeFixed64(math.Float64bits(x.TempC))
+	case *Communique_Col:
+		_ = b.EncodeVarint(9<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.Col))
+	case *Communique_Msg:
+		_ = b.EncodeVarint(10<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Msg); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("Communique.Union has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _Communique_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*Communique)
+	switch tag {
+	case 5: // union.number
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Communique_Number{int32(x)}
+		return true, err
+	case 6: // union.name
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeStringBytes()
+		m.Union = &Communique_Name{x}
+		return true, err
+	case 7: // union.data
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.Union = &Communique_Data{x}
+		return true, err
+	case 8: // union.temp_c
+		if wire != proto.WireFixed64 {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeFixed64()
+		m.Union = &Communique_TempC{math.Float64frombits(x)}
+		return true, err
+	case 9: // union.col
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Union = &Communique_Col{MyMessage_Color(x)}
+		return true, err
+	case 10: // union.msg
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(Strings)
+		err := b.DecodeMessage(msg)
+		m.Union = &Communique_Msg{msg}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _Communique_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*Communique)
+	// union
+	switch x := m.Union.(type) {
+	case *Communique_Number:
+		n += proto.SizeVarint(5<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.Number))
+	case *Communique_Name:
+		n += proto.SizeVarint(6<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.Name)))
+		n += len(x.Name)
+	case *Communique_Data:
+		n += proto.SizeVarint(7<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.Data)))
+		n += len(x.Data)
+	case *Communique_TempC:
+		n += proto.SizeVarint(8<<3 | proto.WireFixed64)
+		n += 8
+	case *Communique_Col:
+		n += proto.SizeVarint(9<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.Col))
+	case *Communique_Msg:
+		s := proto.Size(x.Msg)
+		n += proto.SizeVarint(10<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+var E_Greeting = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessage)(nil),
+	ExtensionType: ([]string)(nil),
+	Field:         106,
+	Name:          "testdata.greeting",
+	Tag:           "bytes,106,rep,name=greeting",
+	Filename:      "test.proto",
+}
+
+var E_Complex = &proto.ExtensionDesc{
+	ExtendedType:  (*OtherMessage)(nil),
+	ExtensionType: (*ComplexExtension)(nil),
+	Field:         200,
+	Name:          "testdata.complex",
+	Tag:           "bytes,200,opt,name=complex",
+	Filename:      "test.proto",
+}
+
+var E_RComplex = &proto.ExtensionDesc{
+	ExtendedType:  (*OtherMessage)(nil),
+	ExtensionType: ([]*Compl
