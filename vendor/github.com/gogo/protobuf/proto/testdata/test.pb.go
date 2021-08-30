@@ -3303,4 +3303,143 @@ var E_X204 = &proto.ExtensionDesc{
 	ExtensionType: (*Empty)(nil),
 	Field:         204,
 	Name:          "testdata.x204",
-	Tag:           "bytes,2
+	Tag:           "bytes,204,opt,name=x204",
+	Filename:      "test.proto",
+}
+
+var E_X205 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         205,
+	Name:          "testdata.x205",
+	Tag:           "bytes,205,opt,name=x205",
+	Filename:      "test.proto",
+}
+
+var E_X206 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         206,
+	Name:          "testdata.x206",
+	Tag:           "bytes,206,opt,name=x206",
+	Filename:      "test.proto",
+}
+
+var E_X207 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         207,
+	Name:          "testdata.x207",
+	Tag:           "bytes,207,opt,name=x207",
+	Filename:      "test.proto",
+}
+
+var E_X208 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         208,
+	Name:          "testdata.x208",
+	Tag:           "bytes,208,opt,name=x208",
+	Filename:      "test.proto",
+}
+
+var E_X209 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         209,
+	Name:          "testdata.x209",
+	Tag:           "bytes,209,opt,name=x209",
+	Filename:      "test.proto",
+}
+
+var E_X210 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         210,
+	Name:          "testdata.x210",
+	Tag:           "bytes,210,opt,name=x210",
+	Filename:      "test.proto",
+}
+
+var E_X211 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         211,
+	Name:          "testdata.x211",
+	Tag:           "bytes,211,opt,name=x211",
+	Filename:      "test.proto",
+}
+
+var E_X212 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         212,
+	Name:          "testdata.x212",
+	Tag:           "bytes,212,opt,name=x212",
+	Filename:      "test.proto",
+}
+
+var E_X213 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         213,
+	Name:          "testdata.x213",
+	Tag:           "bytes,213,opt,name=x213",
+	Filename:      "test.proto",
+}
+
+var E_X214 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         214,
+	Name:          "testdata.x214",
+	Tag:           "bytes,214,opt,name=x214",
+	Filename:      "test.proto",
+}
+
+var E_X215 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         215,
+	Name:          "testdata.x215",
+	Tag:           "bytes,215,opt,name=x215",
+	Filename:      "test.proto",
+}
+
+var E_X216 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         216,
+	Name:          "testdata.x216",
+	Tag:           "bytes,216,opt,name=x216",
+	Filename:      "test.proto",
+}
+
+var E_X217 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         217,
+	Name:          "testdata.x217",
+	Tag:           "bytes,217,opt,name=x217",
+	Filename:      "test.proto",
+}
+
+var E_X218 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         218,
+	Name:          "testdata.x218",
+	Tag:           "bytes,218,opt,name=x218",
+	Filename:      "test.proto",
+}
+
+var E_X219 = &proto.ExtensionDesc{
+	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         219,
+	Name:          "testdata.x219",
+	Tag:           "bytes,219,opt,name=x219",
+	Filename:      "test.proto",
+}
+
+var E_X220 = &proto
