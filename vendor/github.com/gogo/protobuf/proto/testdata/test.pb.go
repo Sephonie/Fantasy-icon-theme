@@ -3714,3 +3714,58 @@ var E_X249 = &proto.ExtensionDesc{
 
 var E_X250 = &proto.ExtensionDesc{
 	ExtendedType:  (*MyMessageSet)(nil),
+	ExtensionType: (*Empty)(nil),
+	Field:         250,
+	Name:          "testdata.x250",
+	Tag:           "bytes,250,opt,name=x250",
+	Filename:      "test.proto",
+}
+
+func init() {
+	proto.RegisterType((*GoEnum)(nil), "testdata.GoEnum")
+	proto.RegisterType((*GoTestField)(nil), "testdata.GoTestField")
+	proto.RegisterType((*GoTest)(nil), "testdata.GoTest")
+	proto.RegisterType((*GoTest_RequiredGroup)(nil), "testdata.GoTest.RequiredGroup")
+	proto.RegisterType((*GoTest_RepeatedGroup)(nil), "testdata.GoTest.RepeatedGroup")
+	proto.RegisterType((*GoTest_OptionalGroup)(nil), "testdata.GoTest.OptionalGroup")
+	proto.RegisterType((*GoTestRequiredGroupField)(nil), "testdata.GoTestRequiredGroupField")
+	proto.RegisterType((*GoTestRequiredGroupField_Group)(nil), "testdata.GoTestRequiredGroupField.Group")
+	proto.RegisterType((*GoSkipTest)(nil), "testdata.GoSkipTest")
+	proto.RegisterType((*GoSkipTest_SkipGroup)(nil), "testdata.GoSkipTest.SkipGroup")
+	proto.RegisterType((*NonPackedTest)(nil), "testdata.NonPackedTest")
+	proto.RegisterType((*PackedTest)(nil), "testdata.PackedTest")
+	proto.RegisterType((*MaxTag)(nil), "testdata.MaxTag")
+	proto.RegisterType((*OldMessage)(nil), "testdata.OldMessage")
+	proto.RegisterType((*OldMessage_Nested)(nil), "testdata.OldMessage.Nested")
+	proto.RegisterType((*NewMessage)(nil), "testdata.NewMessage")
+	proto.RegisterType((*NewMessage_Nested)(nil), "testdata.NewMessage.Nested")
+	proto.RegisterType((*InnerMessage)(nil), "testdata.InnerMessage")
+	proto.RegisterType((*OtherMessage)(nil), "testdata.OtherMessage")
+	proto.RegisterType((*RequiredInnerMessage)(nil), "testdata.RequiredInnerMessage")
+	proto.RegisterType((*MyMessage)(nil), "testdata.MyMessage")
+	proto.RegisterType((*MyMessage_SomeGroup)(nil), "testdata.MyMessage.SomeGroup")
+	proto.RegisterType((*Ext)(nil), "testdata.Ext")
+	proto.RegisterType((*ComplexExtension)(nil), "testdata.ComplexExtension")
+	proto.RegisterType((*DefaultsMessage)(nil), "testdata.DefaultsMessage")
+	proto.RegisterType((*MyMessageSet)(nil), "testdata.MyMessageSet")
+	proto.RegisterType((*Empty)(nil), "testdata.Empty")
+	proto.RegisterType((*MessageList)(nil), "testdata.MessageList")
+	proto.RegisterType((*MessageList_Message)(nil), "testdata.MessageList.Message")
+	proto.RegisterType((*Strings)(nil), "testdata.Strings")
+	proto.RegisterType((*Defaults)(nil), "testdata.Defaults")
+	proto.RegisterType((*SubDefaults)(nil), "testdata.SubDefaults")
+	proto.RegisterType((*RepeatedEnum)(nil), "testdata.RepeatedEnum")
+	proto.RegisterType((*MoreRepeated)(nil), "testdata.MoreRepeated")
+	proto.RegisterType((*GroupOld)(nil), "testdata.GroupOld")
+	proto.RegisterType((*GroupOld_G)(nil), "testdata.GroupOld.G")
+	proto.RegisterType((*GroupNew)(nil), "testdata.GroupNew")
+	proto.RegisterType((*GroupNew_G)(nil), "testdata.GroupNew.G")
+	proto.RegisterType((*FloatingPoint)(nil), "testdata.FloatingPoint")
+	proto.RegisterType((*MessageWithMap)(nil), "testdata.MessageWithMap")
+	proto.RegisterType((*Oneof)(nil), "testdata.Oneof")
+	proto.RegisterType((*Oneof_F_Group)(nil), "testdata.Oneof.F_Group")
+	proto.RegisterType((*Communique)(nil), "testdata.Communique")
+	proto.RegisterEnum("testdata.FOO", FOO_name, FOO_value)
+	proto.RegisterEnum("testdata.GoTest_KIND", GoTest_KIND_name, GoTest_KIND_value)
+	proto.RegisterEnum("testdata.MyMessage_Color", MyMessage_Color_name, MyMessage_Color_value)
+	proto.RegisterEnum("testdata.DefaultsMessage_DefaultsEnum", DefaultsMessage_DefaultsEnum_name, DefaultsMessage_DefaultsEnum_valu
