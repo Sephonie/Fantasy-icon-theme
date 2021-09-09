@@ -452,4 +452,136 @@ func (p *textParser) checkForColon(props *Properties, typ reflect.Type) *ParseEr
 	return nil
 }
 
-func (p *textParser) readSt
+func (p *textParser) readStruct(sv reflect.Value, terminator string) error {
+	st := sv.Type()
+	sprops := GetProperties(st)
+	reqCount := sprops.reqCount
+	var reqFieldErr error
+	fieldSet := make(map[string]bool)
+	// A struct is a sequence of "name: value", terminated by one of
+	// '>' or '}', or the end of the input.  A name may also be
+	// "[extension]" or "[type/url]".
+	//
+	// The whole struct can also be an expanded Any message, like:
+	// [type/url] < ... struct contents ... >
+	for {
+		tok := p.next()
+		if tok.err != nil {
+			return tok.err
+		}
+		if tok.value == terminator {
+			break
+		}
+		if tok.value == "[" {
+			// Looks like an extension or an Any.
+			//
+			// TODO: Check whether we need to handle
+			// namespace rooted names (e.g. ".something.Foo").
+			extName, err := p.consumeExtName()
+			if err != nil {
+				return err
+			}
+
+			if s := strings.LastIndex(extName, "/"); s >= 0 {
+				// If it contains a slash, it's an Any type URL.
+				messageName := extName[s+1:]
+				mt := MessageType(messageName)
+				if mt == nil {
+					return p.errorf("unrecognized message %q in google.protobuf.Any", messageName)
+				}
+				tok = p.next()
+				if tok.err != nil {
+					return tok.err
+				}
+				// consume an optional colon
+				if tok.value == ":" {
+					tok = p.next()
+					if tok.err != nil {
+						return tok.err
+					}
+				}
+				var terminator string
+				switch tok.value {
+				case "<":
+					terminator = ">"
+				case "{":
+					terminator = "}"
+				default:
+					return p.errorf("expected '{' or '<', found %q", tok.value)
+				}
+				v := reflect.New(mt.Elem())
+				if pe := p.readStruct(v.Elem(), terminator); pe != nil {
+					return pe
+				}
+				b, err := Marshal(v.Interface().(Message))
+				if err != nil {
+					return p.errorf("failed to marshal message of type %q: %v", messageName, err)
+				}
+				if fieldSet["type_url"] {
+					return p.errorf(anyRepeatedlyUnpacked, "type_url")
+				}
+				if fieldSet["value"] {
+					return p.errorf(anyRepeatedlyUnpacked, "value")
+				}
+				sv.FieldByName("TypeUrl").SetString(extName)
+				sv.FieldByName("Value").SetBytes(b)
+				fieldSet["type_url"] = true
+				fieldSet["value"] = true
+				continue
+			}
+
+			var desc *ExtensionDesc
+			// This could be faster, but it's functional.
+			// TODO: Do something smarter than a linear scan.
+			for _, d := range RegisteredExtensions(reflect.New(st).Interface().(Message)) {
+				if d.Name == extName {
+					desc = d
+					break
+				}
+			}
+			if desc == nil {
+				return p.errorf("unrecognized extension %q", extName)
+			}
+
+			props := &Properties{}
+			props.Parse(desc.Tag)
+
+			typ := reflect.TypeOf(desc.ExtensionType)
+			if err := p.checkForColon(props, typ); err != nil {
+				return err
+			}
+
+			rep := desc.repeated()
+
+			// Read the extension structure, and set it in
+			// the value we're constructing.
+			var ext reflect.Value
+			if !rep {
+				ext = reflect.New(typ).Elem()
+			} else {
+				ext = reflect.New(typ.Elem()).Elem()
+			}
+			if err := p.readAny(ext, props); err != nil {
+				if _, ok := err.(*RequiredNotSetError); !ok {
+					return err
+				}
+				reqFieldErr = err
+			}
+			ep := sv.Addr().Interface().(Message)
+			if !rep {
+				SetExtension(ep, desc, ext.Interface())
+			} else {
+				old, err := GetExtension(ep, desc)
+				var sl reflect.Value
+				if err == nil {
+					sl = reflect.ValueOf(old) // existing slice
+				} else {
+					sl = reflect.MakeSlice(typ, 0, 1)
+				}
+				sl = reflect.Append(sl, ext)
+				SetExtension(ep, desc, sl.Interface())
+			}
+			if err := p.consumeOptionalSeparator(); err != nil {
+				return err
+			}
+	
