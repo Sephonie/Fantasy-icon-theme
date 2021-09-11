@@ -584,4 +584,144 @@ func (p *textParser) readStruct(sv reflect.Value, terminator string) error {
 			if err := p.consumeOptionalSeparator(); err != nil {
 				return err
 			}
-	
+			continue
+		}
+
+		// This is a normal, non-extension field.
+		name := tok.value
+		var dst reflect.Value
+		fi, props, ok := structFieldByName(sprops, name)
+		if ok {
+			dst = sv.Field(fi)
+		} else if oop, ok := sprops.OneofTypes[name]; ok {
+			// It is a oneof.
+			props = oop.Prop
+			nv := reflect.New(oop.Type.Elem())
+			dst = nv.Elem().Field(0)
+			field := sv.Field(oop.Field)
+			if !field.IsNil() {
+				return p.errorf("field '%s' would overwrite already parsed oneof '%s'", name, sv.Type().Field(oop.Field).Name)
+			}
+			field.Set(nv)
+		}
+		if !dst.IsValid() {
+			return p.errorf("unknown field name %q in %v", name, st)
+		}
+
+		if dst.Kind() == reflect.Map {
+			// Consume any colon.
+			if err := p.checkForColon(props, dst.Type()); err != nil {
+				return err
+			}
+
+			// Construct the map if it doesn't already exist.
+			if dst.IsNil() {
+				dst.Set(reflect.MakeMap(dst.Type()))
+			}
+			key := reflect.New(dst.Type().Key()).Elem()
+			val := reflect.New(dst.Type().Elem()).Elem()
+
+			// The map entry should be this sequence of tokens:
+			//	< key : KEY value : VALUE >
+			// However, implementations may omit key or value, and technically
+			// we should support them in any order.  See b/28924776 for a time
+			// this went wrong.
+
+			tok := p.next()
+			var terminator string
+			switch tok.value {
+			case "<":
+				terminator = ">"
+			case "{":
+				terminator = "}"
+			default:
+				return p.errorf("expected '{' or '<', found %q", tok.value)
+			}
+			for {
+				tok := p.next()
+				if tok.err != nil {
+					return tok.err
+				}
+				if tok.value == terminator {
+					break
+				}
+				switch tok.value {
+				case "key":
+					if err := p.consumeToken(":"); err != nil {
+						return err
+					}
+					if err := p.readAny(key, props.mkeyprop); err != nil {
+						return err
+					}
+					if err := p.consumeOptionalSeparator(); err != nil {
+						return err
+					}
+				case "value":
+					if err := p.checkForColon(props.mvalprop, dst.Type().Elem()); err != nil {
+						return err
+					}
+					if err := p.readAny(val, props.mvalprop); err != nil {
+						return err
+					}
+					if err := p.consumeOptionalSeparator(); err != nil {
+						return err
+					}
+				default:
+					p.back()
+					return p.errorf(`expected "key", "value", or %q, found %q`, terminator, tok.value)
+				}
+			}
+
+			dst.SetMapIndex(key, val)
+			continue
+		}
+
+		// Check that it's not already set if it's not a repeated field.
+		if !props.Repeated && fieldSet[name] {
+			return p.errorf("non-repeated field %q was repeated", name)
+		}
+
+		if err := p.checkForColon(props, dst.Type()); err != nil {
+			return err
+		}
+
+		// Parse into the field.
+		fieldSet[name] = true
+		if err := p.readAny(dst, props); err != nil {
+			if _, ok := err.(*RequiredNotSetError); !ok {
+				return err
+			}
+			reqFieldErr = err
+		}
+		if props.Required {
+			reqCount--
+		}
+
+		if err := p.consumeOptionalSeparator(); err != nil {
+			return err
+		}
+
+	}
+
+	if reqCount > 0 {
+		return p.missingRequiredFieldError(sv)
+	}
+	return reqFieldErr
+}
+
+// consumeExtName consumes extension name or expanded Any type URL and the
+// following ']'. It returns the name or URL consumed.
+func (p *textParser) consumeExtName() (string, error) {
+	tok := p.next()
+	if tok.err != nil {
+		return "", tok.err
+	}
+
+	// If extension name or type url is quoted, it's a single token.
+	if len(tok.value) > 2 && isQuote(tok.value[0]) && tok.value[len(tok.value)-1] == tok.value[0] {
+		name, err := unquoteC(tok.value[1:len(tok.value)-1], rune(tok.value[0]))
+		if err != nil {
+			return "", err
+		}
+		return name, p.consumeToken("]")
+	}
