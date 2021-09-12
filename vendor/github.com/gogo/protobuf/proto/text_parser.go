@@ -725,3 +725,146 @@ func (p *textParser) consumeExtName() (string, error) {
 		}
 		return name, p.consumeToken("]")
 	}
+
+	// Consume everything up to "]"
+	var parts []string
+	for tok.value != "]" {
+		parts = append(parts, tok.value)
+		tok = p.next()
+		if tok.err != nil {
+			return "", p.errorf("unrecognized type_url or extension name: %s", tok.err)
+		}
+	}
+	return strings.Join(parts, ""), nil
+}
+
+// consumeOptionalSeparator consumes an optional semicolon or comma.
+// It is used in readStruct to provide backward compatibility.
+func (p *textParser) consumeOptionalSeparator() error {
+	tok := p.next()
+	if tok.err != nil {
+		return tok.err
+	}
+	if tok.value != ";" && tok.value != "," {
+		p.back()
+	}
+	return nil
+}
+
+func (p *textParser) readAny(v reflect.Value, props *Properties) error {
+	tok := p.next()
+	if tok.err != nil {
+		return tok.err
+	}
+	if tok.value == "" {
+		return p.errorf("unexpected EOF")
+	}
+	if len(props.CustomType) > 0 {
+		if props.Repeated {
+			t := reflect.TypeOf(v.Interface())
+			if t.Kind() == reflect.Slice {
+				tc := reflect.TypeOf(new(Marshaler))
+				ok := t.Elem().Implements(tc.Elem())
+				if ok {
+					fv := v
+					flen := fv.Len()
+					if flen == fv.Cap() {
+						nav := reflect.MakeSlice(v.Type(), flen, 2*flen+1)
+						reflect.Copy(nav, fv)
+						fv.Set(nav)
+					}
+					fv.SetLen(flen + 1)
+
+					// Read one.
+					p.back()
+					return p.readAny(fv.Index(flen), props)
+				}
+			}
+		}
+		if reflect.TypeOf(v.Interface()).Kind() == reflect.Ptr {
+			custom := reflect.New(props.ctype.Elem()).Interface().(Unmarshaler)
+			err := custom.Unmarshal([]byte(tok.unquoted))
+			if err != nil {
+				return p.errorf("%v %v: %v", err, v.Type(), tok.value)
+			}
+			v.Set(reflect.ValueOf(custom))
+		} else {
+			custom := reflect.New(reflect.TypeOf(v.Interface())).Interface().(Unmarshaler)
+			err := custom.Unmarshal([]byte(tok.unquoted))
+			if err != nil {
+				return p.errorf("%v %v: %v", err, v.Type(), tok.value)
+			}
+			v.Set(reflect.Indirect(reflect.ValueOf(custom)))
+		}
+		return nil
+	}
+	if props.StdTime {
+		fv := v
+		p.back()
+		props.StdTime = false
+		tproto := &timestamp{}
+		err := p.readAny(reflect.ValueOf(tproto).Elem(), props)
+		props.StdTime = true
+		if err != nil {
+			return err
+		}
+		tim, err := timestampFromProto(tproto)
+		if err != nil {
+			return err
+		}
+		if props.Repeated {
+			t := reflect.TypeOf(v.Interface())
+			if t.Kind() == reflect.Slice {
+				if t.Elem().Kind() == reflect.Ptr {
+					ts := fv.Interface().([]*time.Time)
+					ts = append(ts, &tim)
+					fv.Set(reflect.ValueOf(ts))
+					return nil
+				} else {
+					ts := fv.Interface().([]time.Time)
+					ts = append(ts, tim)
+					fv.Set(reflect.ValueOf(ts))
+					return nil
+				}
+			}
+		}
+		if reflect.TypeOf(v.Interface()).Kind() == reflect.Ptr {
+			v.Set(reflect.ValueOf(&tim))
+		} else {
+			v.Set(reflect.Indirect(reflect.ValueOf(&tim)))
+		}
+		return nil
+	}
+	if props.StdDuration {
+		fv := v
+		p.back()
+		props.StdDuration = false
+		dproto := &duration{}
+		err := p.readAny(reflect.ValueOf(dproto).Elem(), props)
+		props.StdDuration = true
+		if err != nil {
+			return err
+		}
+		dur, err := durationFromProto(dproto)
+		if err != nil {
+			return err
+		}
+		if props.Repeated {
+			t := reflect.TypeOf(v.Interface())
+			if t.Kind() == reflect.Slice {
+				if t.Elem().Kind() == reflect.Ptr {
+					ds := fv.Interface().([]*time.Duration)
+					ds = append(ds, &dur)
+					fv.Set(reflect.ValueOf(ds))
+					return nil
+				} else {
+					ds := fv.Interface().([]time.Duration)
+					ds = append(ds, dur)
+					fv.Set(reflect.ValueOf(ds))
+					return nil
+				}
+			}
+		}
+		if reflect.TypeOf(v.Interface()).Kind() == reflect.Ptr {
+			v.Set(reflect.ValueOf(&dur))
+		} el
