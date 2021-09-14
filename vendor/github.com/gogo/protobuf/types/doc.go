@@ -1,0 +1,1 @@
+// Go support for Protocol Buffers - Google's data interchange
