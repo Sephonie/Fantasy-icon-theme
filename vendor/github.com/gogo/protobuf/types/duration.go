@@ -29,7 +29,16 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/*
-Package types contains code for interacting with well-known types.
-*/
 package types
+
+// This file implements conversions between google.protobuf.Duration
+// and time.Duration.
+
+import (
+	"errors"
+	"fmt"
+	"time"
+)
+
+const (
+	// Range of a Duration in sec
