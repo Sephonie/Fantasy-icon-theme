@@ -1005,4 +1005,9 @@ func UnmarshalText(s string, pb Message) error {
 		return err
 	}
 	pb.Reset()
-	v :
+	v := reflect.ValueOf(pb)
+	if pe := newTextParser(s).readStruct(v.Elem(), ""); pe != nil {
+		return pe
+	}
+	return nil
+}
