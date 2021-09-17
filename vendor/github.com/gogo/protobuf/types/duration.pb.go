@@ -172,4 +172,177 @@ func (this *Duration) Equal(that interface{}) bool {
 		return this == nil
 	}
 
-	that1, ok := that.(*Durati
+	that1, ok := that.(*Duration)
+	if !ok {
+		that2, ok := that.(Duration)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Seconds != that1.Seconds {
+		return false
+	}
+	if this.Nanos != that1.Nanos {
+		return false
+	}
+	return true
+}
+func (this *Duration) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&types.Duration{")
+	s = append(s, "Seconds: "+fmt.Sprintf("%#v", this.Seconds)+",\n")
+	s = append(s, "Nanos: "+fmt.Sprintf("%#v", this.Nanos)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func valueToGoStringDuration(v interface{}, typ string) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
+}
+func (m *Duration) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Duration) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Seconds != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintDuration(dAtA, i, uint64(m.Seconds))
+	}
+	if m.Nanos != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintDuration(dAtA, i, uint64(m.Nanos))
+	}
+	return i, nil
+}
+
+func encodeVarintDuration(dAtA []byte, offset int, v uint64) int {
+	for v >= 1<<7 {
+		dAtA[offset] = uint8(v&0x7f | 0x80)
+		v >>= 7
+		offset++
+	}
+	dAtA[offset] = uint8(v)
+	return offset + 1
+}
+func (m *Duration) Size() (n int) {
+	var l int
+	_ = l
+	if m.Seconds != 0 {
+		n += 1 + sovDuration(uint64(m.Seconds))
+	}
+	if m.Nanos != 0 {
+		n += 1 + sovDuration(uint64(m.Nanos))
+	}
+	return n
+}
+
+func sovDuration(x uint64) (n int) {
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
+}
+func sozDuration(x uint64) (n int) {
+	return sovDuration(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (m *Duration) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDuration
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Duration: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Duration: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Seconds", wireType)
+			}
+			m.Seconds = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDuration
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Seconds |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Nanos", wireType)
+			}
+			m.Nanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDuration
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Nanos |= (int32(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDuration(dAtA[iNdEx:])
+			if err != 
