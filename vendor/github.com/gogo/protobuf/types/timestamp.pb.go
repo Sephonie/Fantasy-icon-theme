@@ -115,4 +115,180 @@ type Timestamp struct {
 	// 1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to
 	// 9999-12-31T23:59:59Z inclusive.
 	Seconds int64 `protobuf:"varint,1,opt,name=seconds,proto3" json:"seconds,omitempty"`
-	// 
+	// Non-negative fractions of a second at nanosecond resolution. Negative
+	// second values with fractions must still have non-negative nanos values
+	// that count forward in time. Must be from 0 to 999,999,999
+	// inclusive.
+	Nanos int32 `protobuf:"varint,2,opt,name=nanos,proto3" json:"nanos,omitempty"`
+}
+
+func (m *Timestamp) Reset()                    { *m = Timestamp{} }
+func (*Timestamp) ProtoMessage()               {}
+func (*Timestamp) Descriptor() ([]byte, []int) { return fileDescriptorTimestamp, []int{0} }
+func (*Timestamp) XXX_WellKnownType() string   { return "Timestamp" }
+
+func (m *Timestamp) GetSeconds() int64 {
+	if m != nil {
+		return m.Seconds
+	}
+	return 0
+}
+
+func (m *Timestamp) GetNanos() int32 {
+	if m != nil {
+		return m.Nanos
+	}
+	return 0
+}
+
+func init() {
+	proto.RegisterType((*Timestamp)(nil), "google.protobuf.Timestamp")
+}
+func (this *Timestamp) Compare(that interface{}) int {
+	if that == nil {
+		if this == nil {
+			return 0
+		}
+		return 1
+	}
+
+	that1, ok := that.(*Timestamp)
+	if !ok {
+		that2, ok := that.(Timestamp)
+		if ok {
+			that1 = &that2
+		} else {
+			return 1
+		}
+	}
+	if that1 == nil {
+		if this == nil {
+			return 0
+		}
+		return 1
+	} else if this == nil {
+		return -1
+	}
+	if this.Seconds != that1.Seconds {
+		if this.Seconds < that1.Seconds {
+			return -1
+		}
+		return 1
+	}
+	if this.Nanos != that1.Nanos {
+		if this.Nanos < that1.Nanos {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+func (this *Timestamp) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Timestamp)
+	if !ok {
+		that2, ok := that.(Timestamp)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Seconds != that1.Seconds {
+		return false
+	}
+	if this.Nanos != that1.Nanos {
+		return false
+	}
+	return true
+}
+func (this *Timestamp) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&types.Timestamp{")
+	s = append(s, "Seconds: "+fmt.Sprintf("%#v", this.Seconds)+",\n")
+	s = append(s, "Nanos: "+fmt.Sprintf("%#v", this.Nanos)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func valueToGoStringTimestamp(v interface{}, typ string) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
+}
+func (m *Timestamp) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Timestamp) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Seconds != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintTimestamp(dAtA, i, uint64(m.Seconds))
+	}
+	if m.Nanos != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintTimestamp(dAtA, i, uint64(m.Nanos))
+	}
+	return i, nil
+}
+
+func encodeVarintTimestamp(dAtA []byte, offset int, v uint64) int {
+	for v >= 1<<7 {
+		dAtA[offset] = uint8(v&0x7f | 0x80)
+		v >>= 7
+		offset++
+	}
+	dAtA[offset] = uint8(v)
+	return offset + 1
+}
+func (m *Timestamp) Size() (n int) {
+	var l int
+	_ = l
+	if m.Seconds != 0 {
+		n += 1 + sovTimestamp(uint64(m.Seconds))
+	}
+	if m.Nanos != 0 {
+		n += 1 + sovTimestamp(uint64(m.Nanos))
+	}
+	return n
+}
+
+func sovTimestamp(x uint64) (n int) {
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
+}
+func sozTimestamp(x uint64) (n int) {
+	return sovTimestamp(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (m *Timestamp) 
