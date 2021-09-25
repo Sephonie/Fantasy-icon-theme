@@ -192,4 +192,147 @@ func (p *Buffer) DecodeVarint() (x uint64, err error) {
 	if b&0x80 == 0 {
 		goto done
 	}
-	
+	// x -= 0x80 << 63 // Always zero.
+
+	return 0, errOverflow
+
+done:
+	p.index = i
+	return x, nil
+}
+
+// DecodeFixed64 reads a 64-bit integer from the Buffer.
+// This is the format for the
+// fixed64, sfixed64, and double protocol buffer types.
+func (p *Buffer) DecodeFixed64() (x uint64, err error) {
+	// x, err already 0
+	i := p.index + 8
+	if i < 0 || i > len(p.buf) {
+		err = io.ErrUnexpectedEOF
+		return
+	}
+	p.index = i
+
+	x = uint64(p.buf[i-8])
+	x |= uint64(p.buf[i-7]) << 8
+	x |= uint64(p.buf[i-6]) << 16
+	x |= uint64(p.buf[i-5]) << 24
+	x |= uint64(p.buf[i-4]) << 32
+	x |= uint64(p.buf[i-3]) << 40
+	x |= uint64(p.buf[i-2]) << 48
+	x |= uint64(p.buf[i-1]) << 56
+	return
+}
+
+// DecodeFixed32 reads a 32-bit integer from the Buffer.
+// This is the format for the
+// fixed32, sfixed32, and float protocol buffer types.
+func (p *Buffer) DecodeFixed32() (x uint64, err error) {
+	// x, err already 0
+	i := p.index + 4
+	if i < 0 || i > len(p.buf) {
+		err = io.ErrUnexpectedEOF
+		return
+	}
+	p.index = i
+
+	x = uint64(p.buf[i-4])
+	x |= uint64(p.buf[i-3]) << 8
+	x |= uint64(p.buf[i-2]) << 16
+	x |= uint64(p.buf[i-1]) << 24
+	return
+}
+
+// DecodeZigzag64 reads a zigzag-encoded 64-bit integer
+// from the Buffer.
+// This is the format used for the sint64 protocol buffer type.
+func (p *Buffer) DecodeZigzag64() (x uint64, err error) {
+	x, err = p.DecodeVarint()
+	if err != nil {
+		return
+	}
+	x = (x >> 1) ^ uint64((int64(x&1)<<63)>>63)
+	return
+}
+
+// DecodeZigzag32 reads a zigzag-encoded 32-bit integer
+// from  the Buffer.
+// This is the format used for the sint32 protocol buffer type.
+func (p *Buffer) DecodeZigzag32() (x uint64, err error) {
+	x, err = p.DecodeVarint()
+	if err != nil {
+		return
+	}
+	x = uint64((uint32(x) >> 1) ^ uint32((int32(x&1)<<31)>>31))
+	return
+}
+
+// These are not ValueDecoders: they produce an array of bytes or a string.
+// bytes, embedded messages
+
+// DecodeRawBytes reads a count-delimited byte buffer from the Buffer.
+// This is the format used for the bytes protocol buffer
+// type and for embedded messages.
+func (p *Buffer) DecodeRawBytes(alloc bool) (buf []byte, err error) {
+	n, err := p.DecodeVarint()
+	if err != nil {
+		return nil, err
+	}
+
+	nb := int(n)
+	if nb < 0 {
+		return nil, fmt.Errorf("proto: bad byte length %d", nb)
+	}
+	end := p.index + nb
+	if end < p.index || end > len(p.buf) {
+		return nil, io.ErrUnexpectedEOF
+	}
+
+	if !alloc {
+		// todo: check if can get more uses of alloc=false
+		buf = p.buf[p.index:end]
+		p.index += nb
+		return
+	}
+
+	buf = make([]byte, nb)
+	copy(buf, p.buf[p.index:])
+	p.index += nb
+	return
+}
+
+// DecodeStringBytes reads an encoded string from the Buffer.
+// This is the format used for the proto2 string type.
+func (p *Buffer) DecodeStringBytes() (s string, err error) {
+	buf, err := p.DecodeRawBytes(false)
+	if err != nil {
+		return
+	}
+	return string(buf), nil
+}
+
+// Skip the next item in the buffer. Its wire type is decoded and presented as an argument.
+// If the protocol buffer has extensions, and the field matches, add it as an extension.
+// Otherwise, if the XXX_unrecognized field exists, append the skipped data there.
+func (o *Buffer) skipAndSave(t reflect.Type, tag, wire int, base structPointer, unrecField field) error {
+	oi := o.index
+
+	err := o.skip(t, tag, wire)
+	if err != nil {
+		return err
+	}
+
+	if !unrecField.IsValid() {
+		return nil
+	}
+
+	ptr := structPointer_Bytes(base, unrecField)
+
+	// Add the skipped field to struct field
+	obuf := o.buf
+
+	o.buf = *ptr
+	o.EncodeVarint(uint64(tag<<3 | wire))
+	*ptr = append(o.buf, obuf[oi:o.index]...)
+
+	o.buf = obu
