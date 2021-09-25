@@ -335,4 +335,132 @@ func (o *Buffer) skipAndSave(t reflect.Type, tag, wire int, base structPointer, 
 	o.EncodeVarint(uint64(tag<<3 | wire))
 	*ptr = append(o.buf, obuf[oi:o.index]...)
 
-	o.buf = obu
+	o.buf = obuf
+
+	return nil
+}
+
+// Skip the next item in the buffer. Its wire type is decoded and presented as an argument.
+func (o *Buffer) skip(t reflect.Type, tag, wire int) error {
+
+	var u uint64
+	var err error
+
+	switch wire {
+	case WireVarint:
+		_, err = o.DecodeVarint()
+	case WireFixed64:
+		_, err = o.DecodeFixed64()
+	case WireBytes:
+		_, err = o.DecodeRawBytes(false)
+	case WireFixed32:
+		_, err = o.DecodeFixed32()
+	case WireStartGroup:
+		for {
+			u, err = o.DecodeVarint()
+			if err != nil {
+				break
+			}
+			fwire := int(u & 0x7)
+			if fwire == WireEndGroup {
+				break
+			}
+			ftag := int(u >> 3)
+			err = o.skip(t, ftag, fwire)
+			if err != nil {
+				break
+			}
+		}
+	default:
+		err = fmt.Errorf("proto: can't skip unknown wire type %d for %s", wire, t)
+	}
+	return err
+}
+
+// Unmarshaler is the interface representing objects that can
+// unmarshal themselves.  The method should reset the receiver before
+// decoding starts.  The argument points to data that may be
+// overwritten, so implementations should not keep references to the
+// buffer.
+type Unmarshaler interface {
+	Unmarshal([]byte) error
+}
+
+// Unmarshal parses the protocol buffer representation in buf and places the
+// decoded result in pb.  If the struct underlying pb does not match
+// the data in buf, the results can be unpredictable.
+//
+// Unmarshal resets pb before starting to unmarshal, so any
+// existing data in pb is always removed. Use UnmarshalMerge
+// to preserve and append to existing data.
+func Unmarshal(buf []byte, pb Message) error {
+	pb.Reset()
+	return UnmarshalMerge(buf, pb)
+}
+
+// UnmarshalMerge parses the protocol buffer representation in buf and
+// writes the decoded result to pb.  If the struct underlying pb does not match
+// the data in buf, the results can be unpredictable.
+//
+// UnmarshalMerge merges into existing data in pb.
+// Most code should use Unmarshal instead.
+func UnmarshalMerge(buf []byte, pb Message) error {
+	// If the object can unmarshal itself, let it.
+	if u, ok := pb.(Unmarshaler); ok {
+		return u.Unmarshal(buf)
+	}
+	return NewBuffer(buf).Unmarshal(pb)
+}
+
+// DecodeMessage reads a count-delimited message from the Buffer.
+func (p *Buffer) DecodeMessage(pb Message) error {
+	enc, err := p.DecodeRawBytes(false)
+	if err != nil {
+		return err
+	}
+	return NewBuffer(enc).Unmarshal(pb)
+}
+
+// DecodeGroup reads a tag-delimited group from the Buffer.
+func (p *Buffer) DecodeGroup(pb Message) error {
+	typ, base, err := getbase(pb)
+	if err != nil {
+		return err
+	}
+	return p.unmarshalType(typ.Elem(), GetProperties(typ.Elem()), true, base)
+}
+
+// Unmarshal parses the protocol buffer representation in the
+// Buffer and places the decoded result in pb.  If the struct
+// underlying pb does not match the data in the buffer, the results can be
+// unpredictable.
+//
+// Unlike proto.Unmarshal, this does not reset pb before starting to unmarshal.
+func (p *Buffer) Unmarshal(pb Message) error {
+	// If the object can unmarshal itself, let it.
+	if u, ok := pb.(Unmarshaler); ok {
+		err := u.Unmarshal(p.buf[p.index:])
+		p.index = len(p.buf)
+		return err
+	}
+
+	typ, base, err := getbase(pb)
+	if err != nil {
+		return err
+	}
+
+	err = p.unmarshalType(typ.Elem(), GetProperties(typ.Elem()), false, base)
+
+	if collectStats {
+		stats.Decode++
+	}
+
+	return err
+}
+
+// unmarshalType does the work of unmarshaling a structure.
+func (o *Buffer) unmarshalType(st reflect.Type, prop *StructProperties, is_group bool, base structPointer) error {
+	var state errorState
+	required, reqFields := prop.reqCount, uint64(0)
+
+	var err erro
