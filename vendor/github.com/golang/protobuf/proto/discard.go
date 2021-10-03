@@ -142,4 +142,10 @@ func discardLegacy(m Message) {
 	if em, ok := extendable(m); ok {
 		// Ignore lock since discardLegacy is not concurrency safe.
 		emm, _ := em.extensionsRead()
-	
+		for _, mx := range emm {
+			if m, ok := mx.value.(Message); ok {
+				discardLegacy(m)
+			}
+		}
+	}
+}
