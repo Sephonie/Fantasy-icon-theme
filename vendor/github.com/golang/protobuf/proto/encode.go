@@ -86,4 +86,146 @@ const maxVarintBytes = 10 // maximum length of a varint
 // since C++ and Java use signed int32s for the size.
 const maxMarshalSize = 1<<31 - 1
 
-// 
+// EncodeVarint returns the varint encoding of x.
+// This is the format for the
+// int32, int64, uint32, uint64, bool, and enum
+// protocol buffer types.
+// Not used by the package itself, but helpful to clients
+// wishing to use the same encoding.
+func EncodeVarint(x uint64) []byte {
+	var buf [maxVarintBytes]byte
+	var n int
+	for n = 0; x > 127; n++ {
+		buf[n] = 0x80 | uint8(x&0x7F)
+		x >>= 7
+	}
+	buf[n] = uint8(x)
+	n++
+	return buf[0:n]
+}
+
+// EncodeVarint writes a varint-encoded integer to the Buffer.
+// This is the format for the
+// int32, int64, uint32, uint64, bool, and enum
+// protocol buffer types.
+func (p *Buffer) EncodeVarint(x uint64) error {
+	for x >= 1<<7 {
+		p.buf = append(p.buf, uint8(x&0x7f|0x80))
+		x >>= 7
+	}
+	p.buf = append(p.buf, uint8(x))
+	return nil
+}
+
+// SizeVarint returns the varint encoding size of an integer.
+func SizeVarint(x uint64) int {
+	return sizeVarint(x)
+}
+
+func sizeVarint(x uint64) (n int) {
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
+}
+
+// EncodeFixed64 writes a 64-bit integer to the Buffer.
+// This is the format for the
+// fixed64, sfixed64, and double protocol buffer types.
+func (p *Buffer) EncodeFixed64(x uint64) error {
+	p.buf = append(p.buf,
+		uint8(x),
+		uint8(x>>8),
+		uint8(x>>16),
+		uint8(x>>24),
+		uint8(x>>32),
+		uint8(x>>40),
+		uint8(x>>48),
+		uint8(x>>56))
+	return nil
+}
+
+func sizeFixed64(x uint64) int {
+	return 8
+}
+
+// EncodeFixed32 writes a 32-bit integer to the Buffer.
+// This is the format for the
+// fixed32, sfixed32, and float protocol buffer types.
+func (p *Buffer) EncodeFixed32(x uint64) error {
+	p.buf = append(p.buf,
+		uint8(x),
+		uint8(x>>8),
+		uint8(x>>16),
+		uint8(x>>24))
+	return nil
+}
+
+func sizeFixed32(x uint64) int {
+	return 4
+}
+
+// EncodeZigzag64 writes a zigzag-encoded 64-bit integer
+// to the Buffer.
+// This is the format used for the sint64 protocol buffer type.
+func (p *Buffer) EncodeZigzag64(x uint64) error {
+	// use signed number to get arithmetic right shift.
+	return p.EncodeVarint((x << 1) ^ uint64((int64(x) >> 63)))
+}
+
+func sizeZigzag64(x uint64) int {
+	return sizeVarint((x << 1) ^ uint64((int64(x) >> 63)))
+}
+
+// EncodeZigzag32 writes a zigzag-encoded 32-bit integer
+// to the Buffer.
+// This is the format used for the sint32 protocol buffer type.
+func (p *Buffer) EncodeZigzag32(x uint64) error {
+	// use signed number to get arithmetic right shift.
+	return p.EncodeVarint(uint64((uint32(x) << 1) ^ uint32((int32(x) >> 31))))
+}
+
+func sizeZigzag32(x uint64) int {
+	return sizeVarint(uint64((uint32(x) << 1) ^ uint32((int32(x) >> 31))))
+}
+
+// EncodeRawBytes writes a count-delimited byte buffer to the Buffer.
+// This is the format used for the bytes protocol buffer
+// type and for embedded messages.
+func (p *Buffer) EncodeRawBytes(b []byte) error {
+	p.EncodeVarint(uint64(len(b)))
+	p.buf = append(p.buf, b...)
+	return nil
+}
+
+func sizeRawBytes(b []byte) int {
+	return sizeVarint(uint64(len(b))) +
+		len(b)
+}
+
+// EncodeStringBytes writes an encoded string to the Buffer.
+// This is the format used for the proto2 string type.
+func (p *Buffer) EncodeStringBytes(s string) error {
+	p.EncodeVarint(uint64(len(s)))
+	p.buf = append(p.buf, s...)
+	return nil
+}
+
+func sizeStringBytes(s string) int {
+	return sizeVarint(uint64(len(s))) +
+		len(s)
+}
+
+// Marshaler is the interface representing objects that can marshal themselves.
+type Marshaler interface {
+	Marshal() ([]byte, error)
+}
+
+// Marshal takes the protocol buffer
+// and encodes it into the wire format, returning the data.
+func Marshal(pb Message) ([]byte, error) {
+	// Can the object mar
