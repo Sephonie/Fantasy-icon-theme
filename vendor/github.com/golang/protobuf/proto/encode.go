@@ -228,4 +228,156 @@ type Marshaler interface {
 // Marshal takes the protocol buffer
 // and encodes it into the wire format, returning the data.
 func Marshal(pb Message) ([]byte, error) {
-	// Can the object mar
+	// Can the object marshal itself?
+	if m, ok := pb.(Marshaler); ok {
+		return m.Marshal()
+	}
+	p := NewBuffer(nil)
+	err := p.Marshal(pb)
+	if p.buf == nil && err == nil {
+		// Return a non-nil slice on success.
+		return []byte{}, nil
+	}
+	return p.buf, err
+}
+
+// EncodeMessage writes the protocol buffer to the Buffer,
+// prefixed by a varint-encoded length.
+func (p *Buffer) EncodeMessage(pb Message) error {
+	t, base, err := getbase(pb)
+	if structPointer_IsNil(base) {
+		return ErrNil
+	}
+	if err == nil {
+		var state errorState
+		err = p.enc_len_struct(GetProperties(t.Elem()), base, &state)
+	}
+	return err
+}
+
+// Marshal takes the protocol buffer
+// and encodes it into the wire format, writing the result to the
+// Buffer.
+func (p *Buffer) Marshal(pb Message) error {
+	// Can the object marshal itself?
+	if m, ok := pb.(Marshaler); ok {
+		data, err := m.Marshal()
+		p.buf = append(p.buf, data...)
+		return err
+	}
+
+	t, base, err := getbase(pb)
+	if structPointer_IsNil(base) {
+		return ErrNil
+	}
+	if err == nil {
+		err = p.enc_struct(GetProperties(t.Elem()), base)
+	}
+
+	if collectStats {
+		(stats).Encode++ // Parens are to work around a goimports bug.
+	}
+
+	if len(p.buf) > maxMarshalSize {
+		return ErrTooLarge
+	}
+	return err
+}
+
+// Size returns the encoded size of a protocol buffer.
+func Size(pb Message) (n int) {
+	// Can the object marshal itself?  If so, Size is slow.
+	// TODO: add Size to Marshaler, or add a Sizer interface.
+	if m, ok := pb.(Marshaler); ok {
+		b, _ := m.Marshal()
+		return len(b)
+	}
+
+	t, base, err := getbase(pb)
+	if structPointer_IsNil(base) {
+		return 0
+	}
+	if err == nil {
+		n = size_struct(GetProperties(t.Elem()), base)
+	}
+
+	if collectStats {
+		(stats).Size++ // Parens are to work around a goimports bug.
+	}
+
+	return
+}
+
+// Individual type encoders.
+
+// Encode a bool.
+func (o *Buffer) enc_bool(p *Properties, base structPointer) error {
+	v := *structPointer_Bool(base, p.field)
+	if v == nil {
+		return ErrNil
+	}
+	x := 0
+	if *v {
+		x = 1
+	}
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, uint64(x))
+	return nil
+}
+
+func (o *Buffer) enc_proto3_bool(p *Properties, base structPointer) error {
+	v := *structPointer_BoolVal(base, p.field)
+	if !v {
+		return ErrNil
+	}
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, 1)
+	return nil
+}
+
+func size_bool(p *Properties, base structPointer) int {
+	v := *structPointer_Bool(base, p.field)
+	if v == nil {
+		return 0
+	}
+	return len(p.tagcode) + 1 // each bool takes exactly one byte
+}
+
+func size_proto3_bool(p *Properties, base structPointer) int {
+	v := *structPointer_BoolVal(base, p.field)
+	if !v && !p.oneof {
+		return 0
+	}
+	return len(p.tagcode) + 1 // each bool takes exactly one byte
+}
+
+// Encode an int32.
+func (o *Buffer) enc_int32(p *Properties, base structPointer) error {
+	v := structPointer_Word32(base, p.field)
+	if word32_IsNil(v) {
+		return ErrNil
+	}
+	x := int32(word32_Get(v)) // permit sign extension to use full 64-bit range
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, uint64(x))
+	return nil
+}
+
+func (o *Buffer) enc_proto3_int32(p *Properties, base structPointer) error {
+	v := structPointer_Word32Val(base, p.field)
+	x := int32(word32Val_Get(v)) // permit sign extension to use full 64-bit range
+	if x == 0 {
+		return ErrNil
+	}
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, uint64(x))
+	return nil
+}
+
+func size_int32(p *Properties, base structPointer) (n int) {
+	v := structPointer_Word32(base, p.field)
+	if word32_IsNil(v) {
+		return 0
+	}
+	x := int32(word32_Get(v)) // permit sign extension to use full 64-bit range
+	n += len(p.tagcod
