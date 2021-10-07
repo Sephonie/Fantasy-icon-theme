@@ -692,4 +692,154 @@ func (o *Buffer) enc_proto3_slice_byte(p *Properties, base structPointer) error 
 	return nil
 }
 
-func size_slice_byte(p *Properties, base structPointer) (n i
+func size_slice_byte(p *Properties, base structPointer) (n int) {
+	s := *structPointer_Bytes(base, p.field)
+	if s == nil && !p.oneof {
+		return 0
+	}
+	n += len(p.tagcode)
+	n += sizeRawBytes(s)
+	return
+}
+
+func size_proto3_slice_byte(p *Properties, base structPointer) (n int) {
+	s := *structPointer_Bytes(base, p.field)
+	if len(s) == 0 && !p.oneof {
+		return 0
+	}
+	n += len(p.tagcode)
+	n += sizeRawBytes(s)
+	return
+}
+
+// Encode a slice of int32s ([]int32).
+func (o *Buffer) enc_slice_int32(p *Properties, base structPointer) error {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return ErrNil
+	}
+	for i := 0; i < l; i++ {
+		o.buf = append(o.buf, p.tagcode...)
+		x := int32(s.Index(i)) // permit sign extension to use full 64-bit range
+		p.valEnc(o, uint64(x))
+	}
+	return nil
+}
+
+func size_slice_int32(p *Properties, base structPointer) (n int) {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return 0
+	}
+	for i := 0; i < l; i++ {
+		n += len(p.tagcode)
+		x := int32(s.Index(i)) // permit sign extension to use full 64-bit range
+		n += p.valSize(uint64(x))
+	}
+	return
+}
+
+// Encode a slice of int32s ([]int32) in packed format.
+func (o *Buffer) enc_slice_packed_int32(p *Properties, base structPointer) error {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return ErrNil
+	}
+	// TODO: Reuse a Buffer.
+	buf := NewBuffer(nil)
+	for i := 0; i < l; i++ {
+		x := int32(s.Index(i)) // permit sign extension to use full 64-bit range
+		p.valEnc(buf, uint64(x))
+	}
+
+	o.buf = append(o.buf, p.tagcode...)
+	o.EncodeVarint(uint64(len(buf.buf)))
+	o.buf = append(o.buf, buf.buf...)
+	return nil
+}
+
+func size_slice_packed_int32(p *Properties, base structPointer) (n int) {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return 0
+	}
+	var bufSize int
+	for i := 0; i < l; i++ {
+		x := int32(s.Index(i)) // permit sign extension to use full 64-bit range
+		bufSize += p.valSize(uint64(x))
+	}
+
+	n += len(p.tagcode)
+	n += sizeVarint(uint64(bufSize))
+	n += bufSize
+	return
+}
+
+// Encode a slice of uint32s ([]uint32).
+// Exactly the same as int32, except for no sign extension.
+func (o *Buffer) enc_slice_uint32(p *Properties, base structPointer) error {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return ErrNil
+	}
+	for i := 0; i < l; i++ {
+		o.buf = append(o.buf, p.tagcode...)
+		x := s.Index(i)
+		p.valEnc(o, uint64(x))
+	}
+	return nil
+}
+
+func size_slice_uint32(p *Properties, base structPointer) (n int) {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return 0
+	}
+	for i := 0; i < l; i++ {
+		n += len(p.tagcode)
+		x := s.Index(i)
+		n += p.valSize(uint64(x))
+	}
+	return
+}
+
+// Encode a slice of uint32s ([]uint32) in packed format.
+// Exactly the same as int32, except for no sign extension.
+func (o *Buffer) enc_slice_packed_uint32(p *Properties, base structPointer) error {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return ErrNil
+	}
+	// TODO: Reuse a Buffer.
+	buf := NewBuffer(nil)
+	for i := 0; i < l; i++ {
+		p.valEnc(buf, uint64(s.Index(i)))
+	}
+
+	o.buf = append(o.buf, p.tagcode...)
+	o.EncodeVarint(uint64(len(buf.buf)))
+	o.buf = append(o.buf, buf.buf...)
+	return nil
+}
+
+func size_slice_packed_uint32(p *Properties, base structPointer) (n int) {
+	s := structPointer_Word32Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return 0
+	}
+	var bufSize int
+	for i := 0; i < l; i++ {
+		bufSize += p.valSize(uint64(s.Index(i)))
+	}
+
+	n += len(p.tagcode)
+	n += sizeVarint(uint64(bufSize))
+	n
