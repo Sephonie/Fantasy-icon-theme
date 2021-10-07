@@ -380,4 +380,164 @@ func size_int32(p *Properties, base structPointer) (n int) {
 		return 0
 	}
 	x := int32(word32_Get(v)) // permit sign extension to use full 64-bit range
-	n += len(p.tagcod
+	n += len(p.tagcode)
+	n += p.valSize(uint64(x))
+	return
+}
+
+func size_proto3_int32(p *Properties, base structPointer) (n int) {
+	v := structPointer_Word32Val(base, p.field)
+	x := int32(word32Val_Get(v)) // permit sign extension to use full 64-bit range
+	if x == 0 && !p.oneof {
+		return 0
+	}
+	n += len(p.tagcode)
+	n += p.valSize(uint64(x))
+	return
+}
+
+// Encode a uint32.
+// Exactly the same as int32, except for no sign extension.
+func (o *Buffer) enc_uint32(p *Properties, base structPointer) error {
+	v := structPointer_Word32(base, p.field)
+	if word32_IsNil(v) {
+		return ErrNil
+	}
+	x := word32_Get(v)
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, uint64(x))
+	return nil
+}
+
+func (o *Buffer) enc_proto3_uint32(p *Properties, base structPointer) error {
+	v := structPointer_Word32Val(base, p.field)
+	x := word32Val_Get(v)
+	if x == 0 {
+		return ErrNil
+	}
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, uint64(x))
+	return nil
+}
+
+func size_uint32(p *Properties, base structPointer) (n int) {
+	v := structPointer_Word32(base, p.field)
+	if word32_IsNil(v) {
+		return 0
+	}
+	x := word32_Get(v)
+	n += len(p.tagcode)
+	n += p.valSize(uint64(x))
+	return
+}
+
+func size_proto3_uint32(p *Properties, base structPointer) (n int) {
+	v := structPointer_Word32Val(base, p.field)
+	x := word32Val_Get(v)
+	if x == 0 && !p.oneof {
+		return 0
+	}
+	n += len(p.tagcode)
+	n += p.valSize(uint64(x))
+	return
+}
+
+// Encode an int64.
+func (o *Buffer) enc_int64(p *Properties, base structPointer) error {
+	v := structPointer_Word64(base, p.field)
+	if word64_IsNil(v) {
+		return ErrNil
+	}
+	x := word64_Get(v)
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, x)
+	return nil
+}
+
+func (o *Buffer) enc_proto3_int64(p *Properties, base structPointer) error {
+	v := structPointer_Word64Val(base, p.field)
+	x := word64Val_Get(v)
+	if x == 0 {
+		return ErrNil
+	}
+	o.buf = append(o.buf, p.tagcode...)
+	p.valEnc(o, x)
+	return nil
+}
+
+func size_int64(p *Properties, base structPointer) (n int) {
+	v := structPointer_Word64(base, p.field)
+	if word64_IsNil(v) {
+		return 0
+	}
+	x := word64_Get(v)
+	n += len(p.tagcode)
+	n += p.valSize(x)
+	return
+}
+
+func size_proto3_int64(p *Properties, base structPointer) (n int) {
+	v := structPointer_Word64Val(base, p.field)
+	x := word64Val_Get(v)
+	if x == 0 && !p.oneof {
+		return 0
+	}
+	n += len(p.tagcode)
+	n += p.valSize(x)
+	return
+}
+
+// Encode a string.
+func (o *Buffer) enc_string(p *Properties, base structPointer) error {
+	v := *structPointer_String(base, p.field)
+	if v == nil {
+		return ErrNil
+	}
+	x := *v
+	o.buf = append(o.buf, p.tagcode...)
+	o.EncodeStringBytes(x)
+	return nil
+}
+
+func (o *Buffer) enc_proto3_string(p *Properties, base structPointer) error {
+	v := *structPointer_StringVal(base, p.field)
+	if v == "" {
+		return ErrNil
+	}
+	o.buf = append(o.buf, p.tagcode...)
+	o.EncodeStringBytes(v)
+	return nil
+}
+
+func size_string(p *Properties, base structPointer) (n int) {
+	v := *structPointer_String(base, p.field)
+	if v == nil {
+		return 0
+	}
+	x := *v
+	n += len(p.tagcode)
+	n += sizeStringBytes(x)
+	return
+}
+
+func size_proto3_string(p *Properties, base structPointer) (n int) {
+	v := *structPointer_StringVal(base, p.field)
+	if v == "" && !p.oneof {
+		return 0
+	}
+	n += len(p.tagcode)
+	n += sizeStringBytes(v)
+	return
+}
+
+// All protocol buffer fields are nillable, but be careful.
+func isNil(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return v.IsNil()
+	}
+	return false
+}
+
+// Encode a message struct.
+func (o *Buffer) enc_struct_message(p *Properties, base structPointer
