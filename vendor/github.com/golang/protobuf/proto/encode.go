@@ -993,4 +993,156 @@ func (o *Buffer) enc_slice_struct_message(p *Properties, base structPointer) err
 	return state.err
 }
 
-func size_slice_struct_message(p *Properties, base structPointer) (n int) 
+func size_slice_struct_message(p *Properties, base structPointer) (n int) {
+	s := structPointer_StructPointerSlice(base, p.field)
+	l := s.Len()
+	n += l * len(p.tagcode)
+	for i := 0; i < l; i++ {
+		structp := s.Index(i)
+		if structPointer_IsNil(structp) {
+			return // return the size up to this point
+		}
+
+		// Can the object marshal itself?
+		if p.isMarshaler {
+			m := structPointer_Interface(structp, p.stype).(Marshaler)
+			data, _ := m.Marshal()
+			n += sizeRawBytes(data)
+			continue
+		}
+
+		n0 := size_struct(p.sprop, structp)
+		n1 := sizeVarint(uint64(n0)) // size of encoded length
+		n += n0 + n1
+	}
+	return
+}
+
+// Encode a slice of group structs ([]*struct).
+func (o *Buffer) enc_slice_struct_group(p *Properties, base structPointer) error {
+	var state errorState
+	s := structPointer_StructPointerSlice(base, p.field)
+	l := s.Len()
+
+	for i := 0; i < l; i++ {
+		b := s.Index(i)
+		if structPointer_IsNil(b) {
+			return errRepeatedHasNil
+		}
+
+		o.EncodeVarint(uint64((p.Tag << 3) | WireStartGroup))
+
+		err := o.enc_struct(p.sprop, b)
+
+		if err != nil && !state.shouldContinue(err, nil) {
+			if err == ErrNil {
+				return errRepeatedHasNil
+			}
+			return err
+		}
+
+		o.EncodeVarint(uint64((p.Tag << 3) | WireEndGroup))
+	}
+	return state.err
+}
+
+func size_slice_struct_group(p *Properties, base structPointer) (n int) {
+	s := structPointer_StructPointerSlice(base, p.field)
+	l := s.Len()
+
+	n += l * sizeVarint(uint64((p.Tag<<3)|WireStartGroup))
+	n += l * sizeVarint(uint64((p.Tag<<3)|WireEndGroup))
+	for i := 0; i < l; i++ {
+		b := s.Index(i)
+		if structPointer_IsNil(b) {
+			return // return size up to this point
+		}
+
+		n += size_struct(p.sprop, b)
+	}
+	return
+}
+
+// Encode an extension map.
+func (o *Buffer) enc_map(p *Properties, base structPointer) error {
+	exts := structPointer_ExtMap(base, p.field)
+	if err := encodeExtensionsMap(*exts); err != nil {
+		return err
+	}
+
+	return o.enc_map_body(*exts)
+}
+
+func (o *Buffer) enc_exts(p *Properties, base structPointer) error {
+	exts := structPointer_Extensions(base, p.field)
+
+	v, mu := exts.extensionsRead()
+	if v == nil {
+		return nil
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if err := encodeExtensionsMap(v); err != nil {
+		return err
+	}
+
+	return o.enc_map_body(v)
+}
+
+func (o *Buffer) enc_map_body(v map[int32]Extension) error {
+	// Fast-path for common cases: zero or one extensions.
+	if len(v) <= 1 {
+		for _, e := range v {
+			o.buf = append(o.buf, e.enc...)
+		}
+		return nil
+	}
+
+	// Sort keys to provide a deterministic encoding.
+	keys := make([]int, 0, len(v))
+	for k := range v {
+		keys = append(keys, int(k))
+	}
+	sort.Ints(keys)
+
+	for _, k := range keys {
+		o.buf = append(o.buf, v[int32(k)].enc...)
+	}
+	return nil
+}
+
+func size_map(p *Properties, base structPointer) int {
+	v := structPointer_ExtMap(base, p.field)
+	return extensionsMapSize(*v)
+}
+
+func size_exts(p *Properties, base structPointer) int {
+	v := structPointer_Extensions(base, p.field)
+	return extensionsSize(v)
+}
+
+// Encode a map field.
+func (o *Buffer) enc_new_map(p *Properties, base structPointer) error {
+	var state errorState // XXX: or do we need to plumb this through?
+
+	/*
+		A map defined as
+			map<key_type, value_type> map_field = N;
+		is encoded in the same way as
+			message MapFieldEntry {
+				key_type key = 1;
+				value_type value = 2;
+			}
+			repeated MapFieldEntry map_field = N;
+	*/
+
+	v := structPointer_NewAt(base, p.field, p.mtype).Elem() // map[K]V
+	if v.Len() == 0 {
+		return nil
+	}
+
+	keycopy, valcopy, keybase, valbase := mapEncodeScratch(p.mtype)
+
+	enc := func() error {
+		if err := p.mkeyprop.enc(o, p.mkeyprop, keybase
