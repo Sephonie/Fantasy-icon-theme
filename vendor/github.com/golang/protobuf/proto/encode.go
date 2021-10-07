@@ -842,4 +842,155 @@ func size_slice_packed_uint32(p *Properties, base structPointer) (n int) {
 
 	n += len(p.tagcode)
 	n += sizeVarint(uint64(bufSize))
-	n
+	n += bufSize
+	return
+}
+
+// Encode a slice of int64s ([]int64).
+func (o *Buffer) enc_slice_int64(p *Properties, base structPointer) error {
+	s := structPointer_Word64Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return ErrNil
+	}
+	for i := 0; i < l; i++ {
+		o.buf = append(o.buf, p.tagcode...)
+		p.valEnc(o, s.Index(i))
+	}
+	return nil
+}
+
+func size_slice_int64(p *Properties, base structPointer) (n int) {
+	s := structPointer_Word64Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return 0
+	}
+	for i := 0; i < l; i++ {
+		n += len(p.tagcode)
+		n += p.valSize(s.Index(i))
+	}
+	return
+}
+
+// Encode a slice of int64s ([]int64) in packed format.
+func (o *Buffer) enc_slice_packed_int64(p *Properties, base structPointer) error {
+	s := structPointer_Word64Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return ErrNil
+	}
+	// TODO: Reuse a Buffer.
+	buf := NewBuffer(nil)
+	for i := 0; i < l; i++ {
+		p.valEnc(buf, s.Index(i))
+	}
+
+	o.buf = append(o.buf, p.tagcode...)
+	o.EncodeVarint(uint64(len(buf.buf)))
+	o.buf = append(o.buf, buf.buf...)
+	return nil
+}
+
+func size_slice_packed_int64(p *Properties, base structPointer) (n int) {
+	s := structPointer_Word64Slice(base, p.field)
+	l := s.Len()
+	if l == 0 {
+		return 0
+	}
+	var bufSize int
+	for i := 0; i < l; i++ {
+		bufSize += p.valSize(s.Index(i))
+	}
+
+	n += len(p.tagcode)
+	n += sizeVarint(uint64(bufSize))
+	n += bufSize
+	return
+}
+
+// Encode a slice of slice of bytes ([][]byte).
+func (o *Buffer) enc_slice_slice_byte(p *Properties, base structPointer) error {
+	ss := *structPointer_BytesSlice(base, p.field)
+	l := len(ss)
+	if l == 0 {
+		return ErrNil
+	}
+	for i := 0; i < l; i++ {
+		o.buf = append(o.buf, p.tagcode...)
+		o.EncodeRawBytes(ss[i])
+	}
+	return nil
+}
+
+func size_slice_slice_byte(p *Properties, base structPointer) (n int) {
+	ss := *structPointer_BytesSlice(base, p.field)
+	l := len(ss)
+	if l == 0 {
+		return 0
+	}
+	n += l * len(p.tagcode)
+	for i := 0; i < l; i++ {
+		n += sizeRawBytes(ss[i])
+	}
+	return
+}
+
+// Encode a slice of strings ([]string).
+func (o *Buffer) enc_slice_string(p *Properties, base structPointer) error {
+	ss := *structPointer_StringSlice(base, p.field)
+	l := len(ss)
+	for i := 0; i < l; i++ {
+		o.buf = append(o.buf, p.tagcode...)
+		o.EncodeStringBytes(ss[i])
+	}
+	return nil
+}
+
+func size_slice_string(p *Properties, base structPointer) (n int) {
+	ss := *structPointer_StringSlice(base, p.field)
+	l := len(ss)
+	n += l * len(p.tagcode)
+	for i := 0; i < l; i++ {
+		n += sizeStringBytes(ss[i])
+	}
+	return
+}
+
+// Encode a slice of message structs ([]*struct).
+func (o *Buffer) enc_slice_struct_message(p *Properties, base structPointer) error {
+	var state errorState
+	s := structPointer_StructPointerSlice(base, p.field)
+	l := s.Len()
+
+	for i := 0; i < l; i++ {
+		structp := s.Index(i)
+		if structPointer_IsNil(structp) {
+			return errRepeatedHasNil
+		}
+
+		// Can the object marshal itself?
+		if p.isMarshaler {
+			m := structPointer_Interface(structp, p.stype).(Marshaler)
+			data, err := m.Marshal()
+			if err != nil && !state.shouldContinue(err, nil) {
+				return err
+			}
+			o.buf = append(o.buf, p.tagcode...)
+			o.EncodeRawBytes(data)
+			continue
+		}
+
+		o.buf = append(o.buf, p.tagcode...)
+		err := o.enc_len_struct(p.sprop, structp, &state)
+		if err != nil && !state.shouldContinue(err, nil) {
+			if err == ErrNil {
+				return errRepeatedHasNil
+			}
+			return err
+		}
+	}
+	return state.err
+}
+
+func size_slice_struct_message(p *Properties, base structPointer) (n int) 
