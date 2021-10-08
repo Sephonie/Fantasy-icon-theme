@@ -1145,4 +1145,105 @@ func (o *Buffer) enc_new_map(p *Properties, base structPointer) error {
 	keycopy, valcopy, keybase, valbase := mapEncodeScratch(p.mtype)
 
 	enc := func() error {
-		if err := p.mkeyprop.enc(o, p.mkeyprop, keybase
+		if err := p.mkeyprop.enc(o, p.mkeyprop, keybase); err != nil {
+			return err
+		}
+		if err := p.mvalprop.enc(o, p.mvalprop, valbase); err != nil && err != ErrNil {
+			return err
+		}
+		return nil
+	}
+
+	// Don't sort map keys. It is not required by the spec, and C++ doesn't do it.
+	for _, key := range v.MapKeys() {
+		val := v.MapIndex(key)
+
+		keycopy.Set(key)
+		valcopy.Set(val)
+
+		o.buf = append(o.buf, p.tagcode...)
+		if err := o.enc_len_thing(enc, &state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func size_new_map(p *Properties, base structPointer) int {
+	v := structPointer_NewAt(base, p.field, p.mtype).Elem() // map[K]V
+
+	keycopy, valcopy, keybase, valbase := mapEncodeScratch(p.mtype)
+
+	n := 0
+	for _, key := range v.MapKeys() {
+		val := v.MapIndex(key)
+		keycopy.Set(key)
+		valcopy.Set(val)
+
+		// Tag codes for key and val are the responsibility of the sub-sizer.
+		keysize := p.mkeyprop.size(p.mkeyprop, keybase)
+		valsize := p.mvalprop.size(p.mvalprop, valbase)
+		entry := keysize + valsize
+		// Add on tag code and length of map entry itself.
+		n += len(p.tagcode) + sizeVarint(uint64(entry)) + entry
+	}
+	return n
+}
+
+// mapEncodeScratch returns a new reflect.Value matching the map's value type,
+// and a structPointer suitable for passing to an encoder or sizer.
+func mapEncodeScratch(mapType reflect.Type) (keycopy, valcopy reflect.Value, keybase, valbase structPointer) {
+	// Prepare addressable doubly-indirect placeholders for the key and value types.
+	// This is needed because the element-type encoders expect **T, but the map iteration produces T.
+
+	keycopy = reflect.New(mapType.Key()).Elem()                 // addressable K
+	keyptr := reflect.New(reflect.PtrTo(keycopy.Type())).Elem() // addressable *K
+	keyptr.Set(keycopy.Addr())                                  //
+	keybase = toStructPointer(keyptr.Addr())                    // **K
+
+	// Value types are more varied and require special handling.
+	switch mapType.Elem().Kind() {
+	case reflect.Slice:
+		// []byte
+		var dummy []byte
+		valcopy = reflect.ValueOf(&dummy).Elem() // addressable []byte
+		valbase = toStructPointer(valcopy.Addr())
+	case reflect.Ptr:
+		// message; the generated field type is map[K]*Msg (so V is *Msg),
+		// so we only need one level of indirection.
+		valcopy = reflect.New(mapType.Elem()).Elem() // addressable V
+		valbase = toStructPointer(valcopy.Addr())
+	default:
+		// everything else
+		valcopy = reflect.New(mapType.Elem()).Elem()                // addressable V
+		valptr := reflect.New(reflect.PtrTo(valcopy.Type())).Elem() // addressable *V
+		valptr.Set(valcopy.Addr())                                  //
+		valbase = toStructPointer(valptr.Addr())                    // **V
+	}
+	return
+}
+
+// Encode a struct.
+func (o *Buffer) enc_struct(prop *StructProperties, base structPointer) error {
+	var state errorState
+	// Encode fields in tag order so that decoders may use optimizations
+	// that depend on the ordering.
+	// https://developers.google.com/protocol-buffers/docs/encoding#order
+	for _, i := range prop.order {
+		p := prop.Prop[i]
+		if p.enc != nil {
+			err := p.enc(o, p, base)
+			if err != nil {
+				if err == ErrNil {
+					if p.Required && state.err == nil {
+						state.err = &RequiredNotSetError{p.Name}
+					}
+				} else if err == errRepeatedHasNil {
+					// Give more context to nil values in repeated fields.
+					return errors.New("repeated field " + p.OrigName + " has nil element")
+				} else if !state.shouldContinue(err, p) {
+					return err
+				}
+			}
+			if len(o.buf) > maxMarshalSize {
+				return ErrT
