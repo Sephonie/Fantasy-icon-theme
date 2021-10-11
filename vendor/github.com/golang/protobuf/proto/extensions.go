@@ -95,4 +95,99 @@ func extendable(p interface{}) (extendableProto, bool) {
 	if ep, ok := p.(extendableProto); ok {
 		return ep, ok
 	}
-	if ep, ok := p.(extendablePr
+	if ep, ok := p.(extendableProtoV1); ok {
+		return extensionAdapter{ep}, ok
+	}
+	return nil, false
+}
+
+// XXX_InternalExtensions is an internal representation of proto extensions.
+//
+// Each generated message struct type embeds an anonymous XXX_InternalExtensions field,
+// thus gaining the unexported 'extensions' method, which can be called only from the proto package.
+//
+// The methods of XXX_InternalExtensions are not concurrency safe in general,
+// but calls to logically read-only methods such as has and get may be executed concurrently.
+type XXX_InternalExtensions struct {
+	// The struct must be indirect so that if a user inadvertently copies a
+	// generated message and its embedded XXX_InternalExtensions, they
+	// avoid the mayhem of a copied mutex.
+	//
+	// The mutex serializes all logically read-only operations to p.extensionMap.
+	// It is up to the client to ensure that write operations to p.extensionMap are
+	// mutually exclusive with other accesses.
+	p *struct {
+		mu           sync.Mutex
+		extensionMap map[int32]Extension
+	}
+}
+
+// extensionsWrite returns the extension map, creating it on first use.
+func (e *XXX_InternalExtensions) extensionsWrite() map[int32]Extension {
+	if e.p == nil {
+		e.p = new(struct {
+			mu           sync.Mutex
+			extensionMap map[int32]Extension
+		})
+		e.p.extensionMap = make(map[int32]Extension)
+	}
+	return e.p.extensionMap
+}
+
+// extensionsRead returns the extensions map for read-only use.  It may be nil.
+// The caller must hold the returned mutex's lock when accessing Elements within the map.
+func (e *XXX_InternalExtensions) extensionsRead() (map[int32]Extension, sync.Locker) {
+	if e.p == nil {
+		return nil, nil
+	}
+	return e.p.extensionMap, &e.p.mu
+}
+
+var extendableProtoType = reflect.TypeOf((*extendableProto)(nil)).Elem()
+var extendableProtoV1Type = reflect.TypeOf((*extendableProtoV1)(nil)).Elem()
+
+// ExtensionDesc represents an extension specification.
+// Used in generated code from the protocol compiler.
+type ExtensionDesc struct {
+	ExtendedType  Message     // nil pointer to the type that is being extended
+	ExtensionType interface{} // nil pointer to the extension type
+	Field         int32       // field number
+	Name          string      // fully-qualified name of extension, for text formatting
+	Tag           string      // protobuf tag style
+	Filename      string      // name of the file in which the extension is defined
+}
+
+func (ed *ExtensionDesc) repeated() bool {
+	t := reflect.TypeOf(ed.ExtensionType)
+	return t.Kind() == reflect.Slice && t.Elem().Kind() != reflect.Uint8
+}
+
+// Extension represents an extension in a message.
+type Extension struct {
+	// When an extension is stored in a message using SetExtension
+	// only desc and value are set. When the message is marshaled
+	// enc will be set to the encoded form of the message.
+	//
+	// When a message is unmarshaled and contains extensions, each
+	// extension will have only enc set. When such an extension is
+	// accessed using GetExtension (or GetExtensions) desc and value
+	// will be set.
+	desc  *ExtensionDesc
+	value interface{}
+	enc   []byte
+}
+
+// SetRawExtension is for testing only.
+func SetRawExtension(base Message, id int32, b []byte) {
+	epb, ok := extendable(base)
+	if !ok {
+		return
+	}
+	extmap := epb.extensionsWrite()
+	extmap[id] = Extension{enc: b}
+}
+
+// isExtensionField returns true iff the given field number is in an extension range.
+func isExtensionField(pb extendableProto, field int32) bool {
+	for _, er := range pb.ExtensionRangeArray() {
+		if er.Start <=
