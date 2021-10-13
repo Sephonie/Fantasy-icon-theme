@@ -190,4 +190,141 @@ func SetRawExtension(base Message, id int32, b []byte) {
 // isExtensionField returns true iff the given field number is in an extension range.
 func isExtensionField(pb extendableProto, field int32) bool {
 	for _, er := range pb.ExtensionRangeArray() {
-		if er.Start <=
+		if er.Start <= field && field <= er.End {
+			return true
+		}
+	}
+	return false
+}
+
+// checkExtensionTypes checks that the given extension is valid for pb.
+func checkExtensionTypes(pb extendableProto, extension *ExtensionDesc) error {
+	var pbi interface{} = pb
+	// Check the extended type.
+	if ea, ok := pbi.(extensionAdapter); ok {
+		pbi = ea.extendableProtoV1
+	}
+	if a, b := reflect.TypeOf(pbi), reflect.TypeOf(extension.ExtendedType); a != b {
+		return errors.New("proto: bad extended type; " + b.String() + " does not extend " + a.String())
+	}
+	// Check the range.
+	if !isExtensionField(pb, extension.Field) {
+		return errors.New("proto: bad extension number; not in declared ranges")
+	}
+	return nil
+}
+
+// extPropKey is sufficient to uniquely identify an extension.
+type extPropKey struct {
+	base  reflect.Type
+	field int32
+}
+
+var extProp = struct {
+	sync.RWMutex
+	m map[extPropKey]*Properties
+}{
+	m: make(map[extPropKey]*Properties),
+}
+
+func extensionProperties(ed *ExtensionDesc) *Properties {
+	key := extPropKey{base: reflect.TypeOf(ed.ExtendedType), field: ed.Field}
+
+	extProp.RLock()
+	if prop, ok := extProp.m[key]; ok {
+		extProp.RUnlock()
+		return prop
+	}
+	extProp.RUnlock()
+
+	extProp.Lock()
+	defer extProp.Unlock()
+	// Check again.
+	if prop, ok := extProp.m[key]; ok {
+		return prop
+	}
+
+	prop := new(Properties)
+	prop.Init(reflect.TypeOf(ed.ExtensionType), "unknown_name", ed.Tag, nil)
+	extProp.m[key] = prop
+	return prop
+}
+
+// encode encodes any unmarshaled (unencoded) extensions in e.
+func encodeExtensions(e *XXX_InternalExtensions) error {
+	m, mu := e.extensionsRead()
+	if m == nil {
+		return nil // fast path
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return encodeExtensionsMap(m)
+}
+
+// encode encodes any unmarshaled (unencoded) extensions in e.
+func encodeExtensionsMap(m map[int32]Extension) error {
+	for k, e := range m {
+		if e.value == nil || e.desc == nil {
+			// Extension is only in its encoded form.
+			continue
+		}
+
+		// We don't skip extensions that have an encoded form set,
+		// because the extension value may have been mutated after
+		// the last time this function was called.
+
+		et := reflect.TypeOf(e.desc.ExtensionType)
+		props := extensionProperties(e.desc)
+
+		p := NewBuffer(nil)
+		// If e.value has type T, the encoder expects a *struct{ X T }.
+		// Pass a *T with a zero field and hope it all works out.
+		x := reflect.New(et)
+		x.Elem().Set(reflect.ValueOf(e.value))
+		if err := props.enc(p, props, toStructPointer(x)); err != nil {
+			return err
+		}
+		e.enc = p.buf
+		m[k] = e
+	}
+	return nil
+}
+
+func extensionsSize(e *XXX_InternalExtensions) (n int) {
+	m, mu := e.extensionsRead()
+	if m == nil {
+		return 0
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return extensionsMapSize(m)
+}
+
+func extensionsMapSize(m map[int32]Extension) (n int) {
+	for _, e := range m {
+		if e.value == nil || e.desc == nil {
+			// Extension is only in its encoded form.
+			n += len(e.enc)
+			continue
+		}
+
+		// We don't skip extensions that have an encoded form set,
+		// because the extension value may have been mutated after
+		// the last time this function was called.
+
+		et := reflect.TypeOf(e.desc.ExtensionType)
+		props := extensionProperties(e.desc)
+
+		// If e.value has type T, the encoder expects a *struct{ X T }.
+		// Pass a *T with a zero field and hope it all works out.
+		x := reflect.New(et)
+		x.Elem().Set(reflect.ValueOf(e.value))
+		n += props.size(props, toStructPointer(x))
+	}
+	return
+}
+
+// HasExtension returns whether the given extension is present in pb.
+func HasExtension(pb Message, extension *ExtensionDesc) bool {
+	// TODO: Check types, field numbers, etc.?
+	epb
