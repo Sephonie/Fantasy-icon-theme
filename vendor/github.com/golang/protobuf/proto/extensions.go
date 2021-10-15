@@ -449,4 +449,122 @@ func decodeExtension(b []byte, extension *ExtensionDesc) (interface{}, error) {
 	// Allocate a "field" to store the pointer/slice itself; the
 	// pointer/slice will be stored here. We pass
 	// the address of this field to props.dec.
-	// This passes a zero field and
+	// This passes a zero field and a *t and lets props.dec
+	// interpret it as a *struct{ x t }.
+	value := reflect.New(t).Elem()
+
+	for {
+		// Discard wire type and field number varint. It isn't needed.
+		if _, err := o.DecodeVarint(); err != nil {
+			return nil, err
+		}
+
+		if err := props.dec(o, props, toStructPointer(value.Addr())); err != nil {
+			return nil, err
+		}
+
+		if o.index >= len(o.buf) {
+			break
+		}
+	}
+	return value.Interface(), nil
+}
+
+// GetExtensions returns a slice of the extensions present in pb that are also listed in es.
+// The returned slice has the same length as es; missing extensions will appear as nil elements.
+func GetExtensions(pb Message, es []*ExtensionDesc) (extensions []interface{}, err error) {
+	epb, ok := extendable(pb)
+	if !ok {
+		return nil, errors.New("proto: not an extendable proto")
+	}
+	extensions = make([]interface{}, len(es))
+	for i, e := range es {
+		extensions[i], err = GetExtension(epb, e)
+		if err == ErrMissingExtension {
+			err = nil
+		}
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+// ExtensionDescs returns a new slice containing pb's extension descriptors, in undefined order.
+// For non-registered extensions, ExtensionDescs returns an incomplete descriptor containing
+// just the Field field, which defines the extension's field number.
+func ExtensionDescs(pb Message) ([]*ExtensionDesc, error) {
+	epb, ok := extendable(pb)
+	if !ok {
+		return nil, fmt.Errorf("proto: %T is not an extendable proto.Message", pb)
+	}
+	registeredExtensions := RegisteredExtensions(pb)
+
+	emap, mu := epb.extensionsRead()
+	if emap == nil {
+		return nil, nil
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	extensions := make([]*ExtensionDesc, 0, len(emap))
+	for extid, e := range emap {
+		desc := e.desc
+		if desc == nil {
+			desc = registeredExtensions[extid]
+			if desc == nil {
+				desc = &ExtensionDesc{Field: extid}
+			}
+		}
+
+		extensions = append(extensions, desc)
+	}
+	return extensions, nil
+}
+
+// SetExtension sets the specified extension of pb to the specified value.
+func SetExtension(pb Message, extension *ExtensionDesc, value interface{}) error {
+	epb, ok := extendable(pb)
+	if !ok {
+		return errors.New("proto: not an extendable proto")
+	}
+	if err := checkExtensionTypes(epb, extension); err != nil {
+		return err
+	}
+	typ := reflect.TypeOf(extension.ExtensionType)
+	if typ != reflect.TypeOf(value) {
+		return errors.New("proto: bad extension value type")
+	}
+	// nil extension values need to be caught early, because the
+	// encoder can't distinguish an ErrNil due to a nil extension
+	// from an ErrNil due to a missing field. Extensions are
+	// always optional, so the encoder would just swallow the error
+	// and drop all the extensions from the encoded message.
+	if reflect.ValueOf(value).IsNil() {
+		return fmt.Errorf("proto: SetExtension called with nil value of type %T", value)
+	}
+
+	extmap := epb.extensionsWrite()
+	extmap[extension.Field] = Extension{desc: extension, value: value}
+	return nil
+}
+
+// ClearAllExtensions clears all extensions from pb.
+func ClearAllExtensions(pb Message) {
+	epb, ok := extendable(pb)
+	if !ok {
+		return
+	}
+	m := epb.extensionsWrite()
+	for k := range m {
+		delete(m, k)
+	}
+}
+
+// A global registry of extensions.
+// The generated code will register the generated descriptors by calling RegisterExtension.
+
+var extensionMaps = make(map[reflect.Type]map[int32]*ExtensionDesc)
+
+// RegisterExtension is called from the generated code.
+func RegisterExtension(desc *ExtensionDesc) {
+	st := reflect.TypeOf(desc.ExtendedType).Elem(
