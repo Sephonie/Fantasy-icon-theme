@@ -567,4 +567,21 @@ var extensionMaps = make(map[reflect.Type]map[int32]*ExtensionDesc)
 
 // RegisterExtension is called from the generated code.
 func RegisterExtension(desc *ExtensionDesc) {
-	st := reflect.TypeOf(desc.ExtendedType).Elem(
+	st := reflect.TypeOf(desc.ExtendedType).Elem()
+	m := extensionMaps[st]
+	if m == nil {
+		m = make(map[int32]*ExtensionDesc)
+		extensionMaps[st] = m
+	}
+	if _, ok := m[desc.Field]; ok {
+		panic("proto: duplicate extension registered: " + st.String() + " " + strconv.Itoa(int(desc.Field)))
+	}
+	m[desc.Field] = desc
+}
+
+// RegisteredExtensions returns a map of the registered extensions of a
+// protocol buffer struct, indexed by the extension number.
+// The argument pb should be a nil pointer to the struct type.
+func RegisteredExtensions(pb Message) map[int32]*ExtensionDesc {
+	return extensionMaps[reflect.TypeOf(pb).Elem()]
+}
