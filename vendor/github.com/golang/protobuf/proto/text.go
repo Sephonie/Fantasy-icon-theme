@@ -510,4 +510,146 @@ func (tm *TextMarshaler) writeAny(w *textWriter, v reflect.Value, props *Propert
 
 	// We don't attempt to serialise every possible value type; only those
 	// that can occur in protocol buffers.
-	switch v.Kind
+	switch v.Kind() {
+	case reflect.Slice:
+		// Should only be a []byte; repeated fields are handled in writeStruct.
+		if err := writeString(w, string(v.Bytes())); err != nil {
+			return err
+		}
+	case reflect.String:
+		if err := writeString(w, v.String()); err != nil {
+			return err
+		}
+	case reflect.Struct:
+		// Required/optional group/message.
+		var bra, ket byte = '<', '>'
+		if props != nil && props.Wire == "group" {
+			bra, ket = '{', '}'
+		}
+		if err := w.WriteByte(bra); err != nil {
+			return err
+		}
+		if !w.compact {
+			if err := w.WriteByte('\n'); err != nil {
+				return err
+			}
+		}
+		w.indent()
+		if etm, ok := v.Interface().(encoding.TextMarshaler); ok {
+			text, err := etm.MarshalText()
+			if err != nil {
+				return err
+			}
+			if _, err = w.Write(text); err != nil {
+				return err
+			}
+		} else if err := tm.writeStruct(w, v); err != nil {
+			return err
+		}
+		w.unindent()
+		if err := w.WriteByte(ket); err != nil {
+			return err
+		}
+	default:
+		_, err := fmt.Fprint(w, v.Interface())
+		return err
+	}
+	return nil
+}
+
+// equivalent to C's isprint.
+func isprint(c byte) bool {
+	return c >= 0x20 && c < 0x7f
+}
+
+// writeString writes a string in the protocol buffer text format.
+// It is similar to strconv.Quote except we don't use Go escape sequences,
+// we treat the string as a byte sequence, and we use octal escapes.
+// These differences are to maintain interoperability with the other
+// languages' implementations of the text format.
+func writeString(w *textWriter, s string) error {
+	// use WriteByte here to get any needed indent
+	if err := w.WriteByte('"'); err != nil {
+		return err
+	}
+	// Loop over the bytes, not the runes.
+	for i := 0; i < len(s); i++ {
+		var err error
+		// Divergence from C++: we don't escape apostrophes.
+		// There's no need to escape them, and the C++ parser
+		// copes with a naked apostrophe.
+		switch c := s[i]; c {
+		case '\n':
+			_, err = w.w.Write(backslashN)
+		case '\r':
+			_, err = w.w.Write(backslashR)
+		case '\t':
+			_, err = w.w.Write(backslashT)
+		case '"':
+			_, err = w.w.Write(backslashDQ)
+		case '\\':
+			_, err = w.w.Write(backslashBS)
+		default:
+			if isprint(c) {
+				err = w.w.WriteByte(c)
+			} else {
+				_, err = fmt.Fprintf(w.w, "\\%03o", c)
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return w.WriteByte('"')
+}
+
+func writeUnknownStruct(w *textWriter, data []byte) (err error) {
+	if !w.compact {
+		if _, err := fmt.Fprintf(w, "/* %d unknown bytes */\n", len(data)); err != nil {
+			return err
+		}
+	}
+	b := NewBuffer(data)
+	for b.index < len(b.buf) {
+		x, err := b.DecodeVarint()
+		if err != nil {
+			_, err := fmt.Fprintf(w, "/* %v */\n", err)
+			return err
+		}
+		wire, tag := x&7, x>>3
+		if wire == WireEndGroup {
+			w.unindent()
+			if _, err := w.Write(endBraceNewline); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := fmt.Fprint(w, tag); err != nil {
+			return err
+		}
+		if wire != WireStartGroup {
+			if err := w.WriteByte(':'); err != nil {
+				return err
+			}
+		}
+		if !w.compact || wire == WireStartGroup {
+			if err := w.WriteByte(' '); err != nil {
+				return err
+			}
+		}
+		switch wire {
+		case WireBytes:
+			buf, e := b.DecodeRawBytes(false)
+			if e == nil {
+				_, err = fmt.Fprintf(w, "%q", buf)
+			} else {
+				_, err = fmt.Fprintf(w, "/* %v */", e)
+			}
+		case WireFixed32:
+			x, err = b.DecodeFixed32()
+			err = writeUnknownInt(w, x, err)
+		case WireFixed64:
+			x, err = b.DecodeFixed64()
+			err = writeUnknownInt(w, x, err)
+		case WireStartGroup:
+			err = w.WriteByte('{')
