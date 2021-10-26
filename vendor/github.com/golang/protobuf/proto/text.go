@@ -361,4 +361,153 @@ func (tm *TextMarshaler) writeStruct(w *textWriter, sv reflect.Value) error {
 				if err := w.WriteByte('\n'); err != nil {
 					return err
 				}
-				// nil values aren't legal, but we ca
+				// nil values aren't legal, but we can avoid panicking because of them.
+				if val.Kind() != reflect.Ptr || !val.IsNil() {
+					// value
+					if _, err := w.WriteString("value:"); err != nil {
+						return err
+					}
+					if !w.compact {
+						if err := w.WriteByte(' '); err != nil {
+							return err
+						}
+					}
+					if err := tm.writeAny(w, val, props.mvalprop); err != nil {
+						return err
+					}
+					if err := w.WriteByte('\n'); err != nil {
+						return err
+					}
+				}
+				// close struct
+				w.unindent()
+				if err := w.WriteByte('>'); err != nil {
+					return err
+				}
+				if err := w.WriteByte('\n'); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if props.proto3 && fv.Kind() == reflect.Slice && fv.Len() == 0 {
+			// empty bytes field
+			continue
+		}
+		if fv.Kind() != reflect.Ptr && fv.Kind() != reflect.Slice {
+			// proto3 non-repeated scalar field; skip if zero value
+			if isProto3Zero(fv) {
+				continue
+			}
+		}
+
+		if fv.Kind() == reflect.Interface {
+			// Check if it is a oneof.
+			if st.Field(i).Tag.Get("protobuf_oneof") != "" {
+				// fv is nil, or holds a pointer to generated struct.
+				// That generated struct has exactly one field,
+				// which has a protobuf struct tag.
+				if fv.IsNil() {
+					continue
+				}
+				inner := fv.Elem().Elem() // interface -> *T -> T
+				tag := inner.Type().Field(0).Tag.Get("protobuf")
+				props = new(Properties) // Overwrite the outer props var, but not its pointee.
+				props.Parse(tag)
+				// Write the value in the oneof, not the oneof itself.
+				fv = inner.Field(0)
+
+				// Special case to cope with malformed messages gracefully:
+				// If the value in the oneof is a nil pointer, don't panic
+				// in writeAny.
+				if fv.Kind() == reflect.Ptr && fv.IsNil() {
+					// Use errors.New so writeAny won't render quotes.
+					msg := errors.New("/* nil */")
+					fv = reflect.ValueOf(&msg).Elem()
+				}
+			}
+		}
+
+		if err := writeName(w, props); err != nil {
+			return err
+		}
+		if !w.compact {
+			if err := w.WriteByte(' '); err != nil {
+				return err
+			}
+		}
+		if b, ok := fv.Interface().(raw); ok {
+			if err := writeRaw(w, b.Bytes()); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Enums have a String method, so writeAny will work fine.
+		if err := tm.writeAny(w, fv, props); err != nil {
+			return err
+		}
+
+		if err := w.WriteByte('\n'); err != nil {
+			return err
+		}
+	}
+
+	// Extensions (the XXX_extensions field).
+	pv := sv.Addr()
+	if _, ok := extendable(pv.Interface()); ok {
+		if err := tm.writeExtensions(w, pv); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeRaw writes an uninterpreted raw message.
+func writeRaw(w *textWriter, b []byte) error {
+	if err := w.WriteByte('<'); err != nil {
+		return err
+	}
+	if !w.compact {
+		if err := w.WriteByte('\n'); err != nil {
+			return err
+		}
+	}
+	w.indent()
+	if err := writeUnknownStruct(w, b); err != nil {
+		return err
+	}
+	w.unindent()
+	if err := w.WriteByte('>'); err != nil {
+		return err
+	}
+	return nil
+}
+
+// writeAny writes an arbitrary field.
+func (tm *TextMarshaler) writeAny(w *textWriter, v reflect.Value, props *Properties) error {
+	v = reflect.Indirect(v)
+
+	// Floats have special cases.
+	if v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64 {
+		x := v.Float()
+		var b []byte
+		switch {
+		case math.IsInf(x, 1):
+			b = posInf
+		case math.IsInf(x, -1):
+			b = negInf
+		case math.IsNaN(x):
+			b = nan
+		}
+		if b != nil {
+			_, err := w.Write(b)
+			return err
+		}
+		// Other values are handled below.
+	}
+
+	// We don't attempt to serialise every possible value type; only those
+	// that can occur in protocol buffers.
+	switch v.Kind
