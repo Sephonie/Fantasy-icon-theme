@@ -219,4 +219,146 @@ func (tm *TextMarshaler) writeProto3Any(w *textWriter, sv reflect.Value) (bool, 
 
 	b, ok := val.Interface().([]byte)
 	if !ok {
-		return true, errors.New("proto: invalid google.protobuf.Any messag
+		return true, errors.New("proto: invalid google.protobuf.Any message")
+	}
+
+	parts := strings.Split(turl.String(), "/")
+	mt := MessageType(parts[len(parts)-1])
+	if mt == nil {
+		return false, nil
+	}
+	m := reflect.New(mt.Elem())
+	if err := Unmarshal(b, m.Interface().(Message)); err != nil {
+		return false, nil
+	}
+	w.Write([]byte("["))
+	u := turl.String()
+	if requiresQuotes(u) {
+		writeString(w, u)
+	} else {
+		w.Write([]byte(u))
+	}
+	if w.compact {
+		w.Write([]byte("]:<"))
+	} else {
+		w.Write([]byte("]: <\n"))
+		w.ind++
+	}
+	if err := tm.writeStruct(w, m.Elem()); err != nil {
+		return true, err
+	}
+	if w.compact {
+		w.Write([]byte("> "))
+	} else {
+		w.ind--
+		w.Write([]byte(">\n"))
+	}
+	return true, nil
+}
+
+func (tm *TextMarshaler) writeStruct(w *textWriter, sv reflect.Value) error {
+	if tm.ExpandAny && isAny(sv) {
+		if canExpand, err := tm.writeProto3Any(w, sv); canExpand {
+			return err
+		}
+	}
+	st := sv.Type()
+	sprops := GetProperties(st)
+	for i := 0; i < sv.NumField(); i++ {
+		fv := sv.Field(i)
+		props := sprops.Prop[i]
+		name := st.Field(i).Name
+
+		if strings.HasPrefix(name, "XXX_") {
+			// There are two XXX_ fields:
+			//   XXX_unrecognized []byte
+			//   XXX_extensions   map[int32]proto.Extension
+			// The first is handled here;
+			// the second is handled at the bottom of this function.
+			if name == "XXX_unrecognized" && !fv.IsNil() {
+				if err := writeUnknownStruct(w, fv.Interface().([]byte)); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if fv.Kind() == reflect.Ptr && fv.IsNil() {
+			// Field not filled in. This could be an optional field or
+			// a required field that wasn't filled in. Either way, there
+			// isn't anything we can show for it.
+			continue
+		}
+		if fv.Kind() == reflect.Slice && fv.IsNil() {
+			// Repeated field that is empty, or a bytes field that is unused.
+			continue
+		}
+
+		if props.Repeated && fv.Kind() == reflect.Slice {
+			// Repeated field.
+			for j := 0; j < fv.Len(); j++ {
+				if err := writeName(w, props); err != nil {
+					return err
+				}
+				if !w.compact {
+					if err := w.WriteByte(' '); err != nil {
+						return err
+					}
+				}
+				v := fv.Index(j)
+				if v.Kind() == reflect.Ptr && v.IsNil() {
+					// A nil message in a repeated field is not valid,
+					// but we can handle that more gracefully than panicking.
+					if _, err := w.Write([]byte("<nil>\n")); err != nil {
+						return err
+					}
+					continue
+				}
+				if err := tm.writeAny(w, v, props); err != nil {
+					return err
+				}
+				if err := w.WriteByte('\n'); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if fv.Kind() == reflect.Map {
+			// Map fields are rendered as a repeated struct with key/value fields.
+			keys := fv.MapKeys()
+			sort.Sort(mapKeys(keys))
+			for _, key := range keys {
+				val := fv.MapIndex(key)
+				if err := writeName(w, props); err != nil {
+					return err
+				}
+				if !w.compact {
+					if err := w.WriteByte(' '); err != nil {
+						return err
+					}
+				}
+				// open struct
+				if err := w.WriteByte('<'); err != nil {
+					return err
+				}
+				if !w.compact {
+					if err := w.WriteByte('\n'); err != nil {
+						return err
+					}
+				}
+				w.indent()
+				// key
+				if _, err := w.WriteString("key:"); err != nil {
+					return err
+				}
+				if !w.compact {
+					if err := w.WriteByte(' '); err != nil {
+						return err
+					}
+				}
+				if err := tm.writeAny(w, key, props.mkeyprop); err != nil {
+					return err
+				}
+				if err := w.WriteByte('\n'); err != nil {
+					return err
+				}
+				// nil values aren't legal, but we ca
