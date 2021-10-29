@@ -653,3 +653,158 @@ func writeUnknownStruct(w *textWriter, data []byte) (err error) {
 			err = writeUnknownInt(w, x, err)
 		case WireStartGroup:
 			err = w.WriteByte('{')
+			w.indent()
+		case WireVarint:
+			x, err = b.DecodeVarint()
+			err = writeUnknownInt(w, x, err)
+		default:
+			_, err = fmt.Fprintf(w, "/* unknown wire type %d */", wire)
+		}
+		if err != nil {
+			return err
+		}
+		if err = w.WriteByte('\n'); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeUnknownInt(w *textWriter, x uint64, err error) error {
+	if err == nil {
+		_, err = fmt.Fprint(w, x)
+	} else {
+		_, err = fmt.Fprintf(w, "/* %v */", err)
+	}
+	return err
+}
+
+type int32Slice []int32
+
+func (s int32Slice) Len() int           { return len(s) }
+func (s int32Slice) Less(i, j int) bool { return s[i] < s[j] }
+func (s int32Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+// writeExtensions writes all the extensions in pv.
+// pv is assumed to be a pointer to a protocol message struct that is extendable.
+func (tm *TextMarshaler) writeExtensions(w *textWriter, pv reflect.Value) error {
+	emap := extensionMaps[pv.Type().Elem()]
+	ep, _ := extendable(pv.Interface())
+
+	// Order the extensions by ID.
+	// This isn't strictly necessary, but it will give us
+	// canonical output, which will also make testing easier.
+	m, mu := ep.extensionsRead()
+	if m == nil {
+		return nil
+	}
+	mu.Lock()
+	ids := make([]int32, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Sort(int32Slice(ids))
+	mu.Unlock()
+
+	for _, extNum := range ids {
+		ext := m[extNum]
+		var desc *ExtensionDesc
+		if emap != nil {
+			desc = emap[extNum]
+		}
+		if desc == nil {
+			// Unknown extension.
+			if err := writeUnknownStruct(w, ext.enc); err != nil {
+				return err
+			}
+			continue
+		}
+
+		pb, err := GetExtension(ep, desc)
+		if err != nil {
+			return fmt.Errorf("failed getting extension: %v", err)
+		}
+
+		// Repeated extensions will appear as a slice.
+		if !desc.repeated() {
+			if err := tm.writeExtension(w, desc.Name, pb); err != nil {
+				return err
+			}
+		} else {
+			v := reflect.ValueOf(pb)
+			for i := 0; i < v.Len(); i++ {
+				if err := tm.writeExtension(w, desc.Name, v.Index(i).Interface()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (tm *TextMarshaler) writeExtension(w *textWriter, name string, pb interface{}) error {
+	if _, err := fmt.Fprintf(w, "[%s]:", name); err != nil {
+		return err
+	}
+	if !w.compact {
+		if err := w.WriteByte(' '); err != nil {
+			return err
+		}
+	}
+	if err := tm.writeAny(w, reflect.ValueOf(pb), nil); err != nil {
+		return err
+	}
+	if err := w.WriteByte('\n'); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *textWriter) writeIndent() {
+	if !w.complete {
+		return
+	}
+	remain := w.ind * 2
+	for remain > 0 {
+		n := remain
+		if n > len(spaces) {
+			n = len(spaces)
+		}
+		w.w.Write(spaces[:n])
+		remain -= n
+	}
+	w.complete = false
+}
+
+// TextMarshaler is a configurable text format marshaler.
+type TextMarshaler struct {
+	Compact   bool // use compact text format (one line).
+	ExpandAny bool // expand google.protobuf.Any messages of known types
+}
+
+// Marshal writes a given protocol buffer in text format.
+// The only errors returned are from w.
+func (tm *TextMarshaler) Marshal(w io.Writer, pb Message) error {
+	val := reflect.ValueOf(pb)
+	if pb == nil || val.IsNil() {
+		w.Write([]byte("<nil>"))
+		return nil
+	}
+	var bw *bufio.Writer
+	ww, ok := w.(writer)
+	if !ok {
+		bw = bufio.NewWriter(w)
+		ww = bw
+	}
+	aw := &textWriter{
+		w:        ww,
+		complete: true,
+		compact:  tm.Compact,
+	}
+
+	if etm, ok := pb.(encoding.TextMarshaler); ok {
+		text, err := etm.MarshalText()
+		if err != nil {
+			return err
+		}
+		if _, err = aw.Write(text); err
