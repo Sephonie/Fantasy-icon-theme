@@ -130,4 +130,10 @@ func UnmarshalAny(any *any.Any, pb proto.Message) error {
 
 // Is returns true if any value contains a given message type.
 func Is(any *any.Any, pb proto.Message) bool {
-	
+	aname, err := AnyMessageName(any)
+	if err != nil {
+		return false
+	}
+
+	return aname == proto.MessageName(pb)
+}
