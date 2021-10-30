@@ -807,4 +807,48 @@ func (tm *TextMarshaler) Marshal(w io.Writer, pb Message) error {
 		if err != nil {
 			return err
 		}
-		if _, err = aw.Write(text); err
+		if _, err = aw.Write(text); err != nil {
+			return err
+		}
+		if bw != nil {
+			return bw.Flush()
+		}
+		return nil
+	}
+	// Dereference the received pointer so we don't have outer < and >.
+	v := reflect.Indirect(val)
+	if err := tm.writeStruct(aw, v); err != nil {
+		return err
+	}
+	if bw != nil {
+		return bw.Flush()
+	}
+	return nil
+}
+
+// Text is the same as Marshal, but returns the string directly.
+func (tm *TextMarshaler) Text(pb Message) string {
+	var buf bytes.Buffer
+	tm.Marshal(&buf, pb)
+	return buf.String()
+}
+
+var (
+	defaultTextMarshaler = TextMarshaler{}
+	compactTextMarshaler = TextMarshaler{Compact: true}
+)
+
+// TODO: consider removing some of the Marshal functions below.
+
+// MarshalText writes a given protocol buffer in text format.
+// The only errors returned are from w.
+func MarshalText(w io.Writer, pb Message) error { return defaultTextMarshaler.Marshal(w, pb) }
+
+// MarshalTextString is the same as MarshalText, but returns the string directly.
+func MarshalTextString(pb Message) string { return defaultTextMarshaler.Text(pb) }
+
+// CompactText writes a given protocol buffer in compact text format (one line).
+func CompactText(w io.Writer, pb Message) error { return compactTextMarshaler.Marshal(w, pb) }
+
+// CompactTextString is the same as CompactText, but returns the string directly.
+func CompactTextString(pb Message) string { return compactTextMarshaler.Text(pb) }
