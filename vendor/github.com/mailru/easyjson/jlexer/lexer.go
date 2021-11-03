@@ -298,4 +298,172 @@ func (r *Lexer) processEscape(data []byte) (int, error) {
 		r.token.byteValue = append(r.token.byteValue, c)
 		return 2, nil
 	case 'b':
-		r.token.byteValue = append(r.
+		r.token.byteValue = append(r.token.byteValue, '\b')
+		return 2, nil
+	case 'f':
+		r.token.byteValue = append(r.token.byteValue, '\f')
+		return 2, nil
+	case 'n':
+		r.token.byteValue = append(r.token.byteValue, '\n')
+		return 2, nil
+	case 'r':
+		r.token.byteValue = append(r.token.byteValue, '\r')
+		return 2, nil
+	case 't':
+		r.token.byteValue = append(r.token.byteValue, '\t')
+		return 2, nil
+	case 'u':
+		rr := getu4(data)
+		if rr < 0 {
+			return 0, errors.New("syntax error")
+		}
+
+		read := 6
+		if utf16.IsSurrogate(rr) {
+			rr1 := getu4(data[read:])
+			if dec := utf16.DecodeRune(rr, rr1); dec != unicode.ReplacementChar {
+				read += 6
+				rr = dec
+			} else {
+				rr = unicode.ReplacementChar
+			}
+		}
+		var d [4]byte
+		s := utf8.EncodeRune(d[:], rr)
+		r.token.byteValue = append(r.token.byteValue, d[:s]...)
+		return read, nil
+	}
+
+	return 0, errors.New("syntax error")
+}
+
+// fetchString scans a string literal token.
+func (r *Lexer) fetchString() {
+	r.pos++
+	data := r.Data[r.pos:]
+
+	hasEscapes, length := findStringLen(data)
+	if !hasEscapes {
+		r.token.byteValue = data[:length]
+		r.pos += length + 1
+		return
+	}
+
+	r.token.byteValue = make([]byte, 0, length)
+	p := 0
+	for i := 0; i < len(data); {
+		switch data[i] {
+		case '"':
+			r.pos += i + 1
+			r.token.byteValue = append(r.token.byteValue, data[p:i]...)
+			i++
+			return
+
+		case '\\':
+			r.token.byteValue = append(r.token.byteValue, data[p:i]...)
+			off, err := r.processEscape(data[i:])
+			if err != nil {
+				r.errParse(err.Error())
+				return
+			}
+			i += off
+			p = i
+
+		default:
+			i++
+		}
+	}
+	r.errParse("unterminated string literal")
+}
+
+// scanToken scans the next token if no token is currently available in the lexer.
+func (r *Lexer) scanToken() {
+	if r.token.kind != tokenUndef || r.fatalError != nil {
+		return
+	}
+
+	r.FetchToken()
+}
+
+// consume resets the current token to allow scanning the next one.
+func (r *Lexer) consume() {
+	r.token.kind = tokenUndef
+	r.token.delimValue = 0
+}
+
+// Ok returns true if no error (including io.EOF) was encountered during scanning.
+func (r *Lexer) Ok() bool {
+	return r.fatalError == nil
+}
+
+const maxErrorContextLen = 13
+
+func (r *Lexer) errParse(what string) {
+	if r.fatalError == nil {
+		var str string
+		if len(r.Data)-r.pos <= maxErrorContextLen {
+			str = string(r.Data)
+		} else {
+			str = string(r.Data[r.pos:r.pos+maxErrorContextLen-3]) + "..."
+		}
+		r.fatalError = &LexerError{
+			Reason: what,
+			Offset: r.pos,
+			Data:   str,
+		}
+	}
+}
+
+func (r *Lexer) errSyntax() {
+	r.errParse("syntax error")
+}
+
+func (r *Lexer) errInvalidToken(expected string) {
+	if r.fatalError != nil {
+		return
+	}
+	if r.UseMultipleErrors {
+		r.pos = r.start
+		r.consume()
+		r.SkipRecursive()
+		switch expected {
+		case "[":
+			r.token.delimValue = ']'
+			r.token.kind = tokenDelim
+		case "{":
+			r.token.delimValue = '}'
+			r.token.kind = tokenDelim
+		}
+		r.addNonfatalError(&LexerError{
+			Reason: fmt.Sprintf("expected %s", expected),
+			Offset: r.start,
+			Data:   string(r.Data[r.start:r.pos]),
+		})
+		return
+	}
+
+	var str string
+	if len(r.token.byteValue) <= maxErrorContextLen {
+		str = string(r.token.byteValue)
+	} else {
+		str = string(r.token.byteValue[:maxErrorContextLen-3]) + "..."
+	}
+	r.fatalError = &LexerError{
+		Reason: fmt.Sprintf("expected %s", expected),
+		Offset: r.pos,
+		Data:   str,
+	}
+}
+
+func (r *Lexer) GetPos() int {
+	return r.pos
+}
+
+// Delim consumes a token and verifies that it is the given delimiter.
+func (r *Lexer) Delim(c byte) {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+
+	if !r.Ok() || r.token.delimValue != c {
+		r.consume() // errInvali
