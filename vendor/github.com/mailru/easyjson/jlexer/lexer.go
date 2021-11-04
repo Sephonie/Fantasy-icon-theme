@@ -466,4 +466,159 @@ func (r *Lexer) Delim(c byte) {
 	}
 
 	if !r.Ok() || r.token.delimValue != c {
-		r.consume() // errInvali
+		r.consume() // errInvalidToken can change token if UseMultipleErrors is enabled.
+		r.errInvalidToken(string([]byte{c}))
+	} else {
+		r.consume()
+	}
+}
+
+// IsDelim returns true if there was no scanning error and next token is the given delimiter.
+func (r *Lexer) IsDelim(c byte) bool {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	return !r.Ok() || r.token.delimValue == c
+}
+
+// Null verifies that the next token is null and consumes it.
+func (r *Lexer) Null() {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() || r.token.kind != tokenNull {
+		r.errInvalidToken("null")
+	}
+	r.consume()
+}
+
+// IsNull returns true if the next token is a null keyword.
+func (r *Lexer) IsNull() bool {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	return r.Ok() && r.token.kind == tokenNull
+}
+
+// Skip skips a single token.
+func (r *Lexer) Skip() {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	r.consume()
+}
+
+// SkipRecursive skips next array or object completely, or just skips a single token if not
+// an array/object.
+//
+// Note: no syntax validation is performed on the skipped data.
+func (r *Lexer) SkipRecursive() {
+	r.scanToken()
+	var start, end byte
+
+	if r.token.delimValue == '{' {
+		start, end = '{', '}'
+	} else if r.token.delimValue == '[' {
+		start, end = '[', ']'
+	} else {
+		r.consume()
+		return
+	}
+
+	r.consume()
+
+	level := 1
+	inQuotes := false
+	wasEscape := false
+
+	for i, c := range r.Data[r.pos:] {
+		switch {
+		case c == start && !inQuotes:
+			level++
+		case c == end && !inQuotes:
+			level--
+			if level == 0 {
+				r.pos += i + 1
+				return
+			}
+		case c == '\\' && inQuotes:
+			wasEscape = !wasEscape
+			continue
+		case c == '"' && inQuotes:
+			inQuotes = wasEscape
+		case c == '"':
+			inQuotes = true
+		}
+		wasEscape = false
+	}
+	r.pos = len(r.Data)
+	r.fatalError = &LexerError{
+		Reason: "EOF reached while skipping array/object or token",
+		Offset: r.pos,
+		Data:   string(r.Data[r.pos:]),
+	}
+}
+
+// Raw fetches the next item recursively as a data slice
+func (r *Lexer) Raw() []byte {
+	r.SkipRecursive()
+	if !r.Ok() {
+		return nil
+	}
+	return r.Data[r.start:r.pos]
+}
+
+// IsStart returns whether the lexer is positioned at the start
+// of an input string.
+func (r *Lexer) IsStart() bool {
+	return r.pos == 0
+}
+
+// Consumed reads all remaining bytes from the input, publishing an error if
+// there is anything but whitespace remaining.
+func (r *Lexer) Consumed() {
+	if r.pos > len(r.Data) || !r.Ok() {
+		return
+	}
+
+	for _, c := range r.Data[r.pos:] {
+		if c != ' ' && c != '\t' && c != '\r' && c != '\n' {
+			r.AddError(&LexerError{
+				Reason: "invalid character '" + string(c) + "' after top-level value",
+				Offset: r.pos,
+				Data:   string(r.Data[r.pos:]),
+			})
+			return
+		}
+
+		r.pos++
+		r.start++
+	}
+}
+
+func (r *Lexer) unsafeString() (string, []byte) {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() || r.token.kind != tokenString {
+		r.errInvalidToken("string")
+		return "", nil
+	}
+	bytes := r.token.byteValue
+	ret := bytesToStr(r.token.byteValue)
+	r.consume()
+	return ret, bytes
+}
+
+// UnsafeString returns the string value if the token is a string literal.
+//
+// Warning: returned string may point to the input buffer, so the string should not outlive
+// the input buffer. Intended pattern of usage is as an argument to a switch statement.
+func (r *Lexer) UnsafeString() string {
+	ret, _ := r.unsafeString()
+	return ret
+}
+
+// UnsafeBytes returns the byte slice if the token is a string literal.
+func (r *Lexer) UnsafeBytes() []byte {
+	_, ret := r.unsafeSt
