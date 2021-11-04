@@ -832,4 +832,224 @@ func (r *Lexer) Int() int {
 	return int(r.Int64())
 }
 
-func (r *Lexer) Uint8Str() ui
+func (r *Lexer) Uint8Str() uint8 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 8)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return uint8(n)
+}
+
+func (r *Lexer) Uint16Str() uint16 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 16)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return uint16(n)
+}
+
+func (r *Lexer) Uint32Str() uint32 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return uint32(n)
+}
+
+func (r *Lexer) Uint64Str() uint64 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return n
+}
+
+func (r *Lexer) UintStr() uint {
+	return uint(r.Uint64Str())
+}
+
+func (r *Lexer) UintptrStr() uintptr {
+	return uintptr(r.Uint64Str())
+}
+
+func (r *Lexer) Int8Str() int8 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 8)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return int8(n)
+}
+
+func (r *Lexer) Int16Str() int16 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 16)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return int16(n)
+}
+
+func (r *Lexer) Int32Str() int32 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return int32(n)
+}
+
+func (r *Lexer) Int64Str() int64 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return n
+}
+
+func (r *Lexer) IntStr() int {
+	return int(r.Int64Str())
+}
+
+func (r *Lexer) Float32() float32 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseFloat(s, 32)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return float32(n)
+}
+
+func (r *Lexer) Float32Str() float32 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+	n, err := strconv.ParseFloat(s, 32)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return float32(n)
+}
+
+func (r *Lexer) Float64() float64 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return n
+}
+
+func (r *Lexer) Float64Str() float64 {
+	s, b := r.unsafeString()
+	if !r.Ok() {
+		return 0
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   string(b),
+		})
+	}
+	return n
+}
+
+func (r *Lexer) Error() error {
+	return r.fatalError
+}
+
+func (r *Lexer) AddError(e error) {
+	if r.fatalError == nil {
+		r.fatalEr
