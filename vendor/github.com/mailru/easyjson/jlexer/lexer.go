@@ -621,4 +621,215 @@ func (r *Lexer) UnsafeString() string {
 
 // UnsafeBytes returns the byte slice if the token is a string literal.
 func (r *Lexer) UnsafeBytes() []byte {
-	_, ret := r.unsafeSt
+	_, ret := r.unsafeString()
+	return ret
+}
+
+// String reads a string literal.
+func (r *Lexer) String() string {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() || r.token.kind != tokenString {
+		r.errInvalidToken("string")
+		return ""
+	}
+	ret := string(r.token.byteValue)
+	r.consume()
+	return ret
+}
+
+// Bytes reads a string literal and base64 decodes it into a byte slice.
+func (r *Lexer) Bytes() []byte {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() || r.token.kind != tokenString {
+		r.errInvalidToken("string")
+		return nil
+	}
+	ret := make([]byte, base64.StdEncoding.DecodedLen(len(r.token.byteValue)))
+	len, err := base64.StdEncoding.Decode(ret, r.token.byteValue)
+	if err != nil {
+		r.fatalError = &LexerError{
+			Reason: err.Error(),
+		}
+		return nil
+	}
+
+	r.consume()
+	return ret[:len]
+}
+
+// Bool reads a true or false boolean keyword.
+func (r *Lexer) Bool() bool {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() || r.token.kind != tokenBool {
+		r.errInvalidToken("bool")
+		return false
+	}
+	ret := r.token.boolValue
+	r.consume()
+	return ret
+}
+
+func (r *Lexer) number() string {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() || r.token.kind != tokenNumber {
+		r.errInvalidToken("number")
+		return ""
+	}
+	ret := bytesToStr(r.token.byteValue)
+	r.consume()
+	return ret
+}
+
+func (r *Lexer) Uint8() uint8 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 8)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return uint8(n)
+}
+
+func (r *Lexer) Uint16() uint16 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 16)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return uint16(n)
+}
+
+func (r *Lexer) Uint32() uint32 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return uint32(n)
+}
+
+func (r *Lexer) Uint64() uint64 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return n
+}
+
+func (r *Lexer) Uint() uint {
+	return uint(r.Uint64())
+}
+
+func (r *Lexer) Int8() int8 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 8)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return int8(n)
+}
+
+func (r *Lexer) Int16() int16 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 16)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return int16(n)
+}
+
+func (r *Lexer) Int32() int32 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return int32(n)
+}
+
+func (r *Lexer) Int64() int64 {
+	s := r.number()
+	if !r.Ok() {
+		return 0
+	}
+
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		r.addNonfatalError(&LexerError{
+			Offset: r.start,
+			Reason: err.Error(),
+			Data:   s,
+		})
+	}
+	return n
+}
+
+func (r *Lexer) Int() int {
+	return int(r.Int64())
+}
+
+func (r *Lexer) Uint8Str() ui
