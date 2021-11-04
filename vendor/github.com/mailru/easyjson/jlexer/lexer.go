@@ -1052,4 +1052,125 @@ func (r *Lexer) Error() error {
 
 func (r *Lexer) AddError(e error) {
 	if r.fatalError == nil {
-		r.fatalEr
+		r.fatalError = e
+	}
+}
+
+func (r *Lexer) AddNonFatalError(e error) {
+	r.addNonfatalError(&LexerError{
+		Offset: r.start,
+		Data:   string(r.Data[r.start:r.pos]),
+		Reason: e.Error(),
+	})
+}
+
+func (r *Lexer) addNonfatalError(err *LexerError) {
+	if r.UseMultipleErrors {
+		// We don't want to add errors with the same offset.
+		if len(r.multipleErrors) != 0 && r.multipleErrors[len(r.multipleErrors)-1].Offset == err.Offset {
+			return
+		}
+		r.multipleErrors = append(r.multipleErrors, err)
+		return
+	}
+	r.fatalError = err
+}
+
+func (r *Lexer) GetNonFatalErrors() []*LexerError {
+	return r.multipleErrors
+}
+
+// JsonNumber fetches and json.Number from 'encoding/json' package.
+// Both int, float or string, contains them are valid values
+func (r *Lexer) JsonNumber() json.Number {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() {
+		r.errInvalidToken("json.Number")
+		return json.Number("")
+	}
+
+	switch r.token.kind {
+	case tokenString:
+		return json.Number(r.String())
+	case tokenNumber:
+		return json.Number(r.Raw())
+	case tokenNull:
+		r.Null()
+		return json.Number("")
+	default:
+		r.errSyntax()
+		return json.Number("")
+	}
+}
+
+// Interface fetches an interface{} analogous to the 'encoding/json' package.
+func (r *Lexer) Interface() interface{} {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+
+	if !r.Ok() {
+		return nil
+	}
+	switch r.token.kind {
+	case tokenString:
+		return r.String()
+	case tokenNumber:
+		return r.Float64()
+	case tokenBool:
+		return r.Bool()
+	case tokenNull:
+		r.Null()
+		return nil
+	}
+
+	if r.token.delimValue == '{' {
+		r.consume()
+
+		ret := map[string]interface{}{}
+		for !r.IsDelim('}') {
+			key := r.String()
+			r.WantColon()
+			ret[key] = r.Interface()
+			r.WantComma()
+		}
+		r.Delim('}')
+
+		if r.Ok() {
+			return ret
+		} else {
+			return nil
+		}
+	} else if r.token.delimValue == '[' {
+		r.consume()
+
+		var ret []interface{}
+		for !r.IsDelim(']') {
+			ret = append(ret, r.Interface())
+			r.WantComma()
+		}
+		r.Delim(']')
+
+		if r.Ok() {
+			return ret
+		} else {
+			return nil
+		}
+	}
+	r.errSyntax()
+	return nil
+}
+
+// WantComma requires a comma to be present before fetching next token.
+func (r *Lexer) WantComma() {
+	r.wantSep = ','
+	r.firstElement = false
+}
+
+// WantColon requires a colon to be present before fetching next token.
+func (r *Lexer) WantColon() {
+	r.wantSep = ':'
+	r.firstElement = false
+}
