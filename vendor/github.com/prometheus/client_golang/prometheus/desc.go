@@ -90,4 +90,109 @@ type Desc struct {
 // variableLabels only contain the label names. Their label values are variable
 // and therefore not part of the Desc. (They are managed within the Metric.)
 //
-// For constLabels, the label values are constant. Therefore, they
+// For constLabels, the label values are constant. Therefore, they are fully
+// specified in the Desc. See the Opts documentation for the implications of
+// constant labels.
+func NewDesc(fqName, help string, variableLabels []string, constLabels Labels) *Desc {
+	d := &Desc{
+		fqName:         fqName,
+		help:           help,
+		variableLabels: variableLabels,
+	}
+	if help == "" {
+		d.err = errors.New("empty help string")
+		return d
+	}
+	if !metricNameRE.MatchString(fqName) {
+		d.err = fmt.Errorf("%q is not a valid metric name", fqName)
+		return d
+	}
+	// labelValues contains the label values of const labels (in order of
+	// their sorted label names) plus the fqName (at position 0).
+	labelValues := make([]string, 1, len(constLabels)+1)
+	labelValues[0] = fqName
+	labelNames := make([]string, 0, len(constLabels)+len(variableLabels))
+	labelNameSet := map[string]struct{}{}
+	// First add only the const label names and sort them...
+	for labelName := range constLabels {
+		if !checkLabelName(labelName) {
+			d.err = fmt.Errorf("%q is not a valid label name", labelName)
+			return d
+		}
+		labelNames = append(labelNames, labelName)
+		labelNameSet[labelName] = struct{}{}
+	}
+	sort.Strings(labelNames)
+	// ... so that we can now add const label values in the order of their names.
+	for _, labelName := range labelNames {
+		labelValues = append(labelValues, constLabels[labelName])
+	}
+	// Now add the variable label names, but prefix them with something that
+	// cannot be in a regular label name. That prevents matching the label
+	// dimension with a different mix between preset and variable labels.
+	for _, labelName := range variableLabels {
+		if !checkLabelName(labelName) {
+			d.err = fmt.Errorf("%q is not a valid label name", labelName)
+			return d
+		}
+		labelNames = append(labelNames, "$"+labelName)
+		labelNameSet[labelName] = struct{}{}
+	}
+	if len(labelNames) != len(labelNameSet) {
+		d.err = errors.New("duplicate label names")
+		return d
+	}
+	vh := hashNew()
+	for _, val := range labelValues {
+		vh = hashAdd(vh, val)
+		vh = hashAddByte(vh, separatorByte)
+	}
+	d.id = vh
+	// Sort labelNames so that order doesn't matter for the hash.
+	sort.Strings(labelNames)
+	// Now hash together (in this order) the help string and the sorted
+	// label names.
+	lh := hashNew()
+	lh = hashAdd(lh, help)
+	lh = hashAddByte(lh, separatorByte)
+	for _, labelName := range labelNames {
+		lh = hashAdd(lh, labelName)
+		lh = hashAddByte(lh, separatorByte)
+	}
+	d.dimHash = lh
+
+	d.constLabelPairs = make([]*dto.LabelPair, 0, len(constLabels))
+	for n, v := range constLabels {
+		d.constLabelPairs = append(d.constLabelPairs, &dto.LabelPair{
+			Name:  proto.String(n),
+			Value: proto.String(v),
+		})
+	}
+	sort.Sort(LabelPairSorter(d.constLabelPairs))
+	return d
+}
+
+// NewInvalidDesc returns an invalid descriptor, i.e. a descriptor with the
+// provided error set. If a collector returning such a descriptor is registered,
+// registration will fail with the provided error. NewInvalidDesc can be used by
+// a Collector to signal inability to describe itself.
+func NewInvalidDesc(err error) *Desc {
+	return &Desc{
+		err: err,
+	}
+}
+
+func (d *Desc) String() string {
+	lpStrings := make([]string, 0, len(d.constLabelPairs))
+	for _, lp := range d.constLabelPairs {
+		lpStrings = append(
+			lpStrings,
+			fmt.Sprintf("%s=%q", lp.GetName(), lp.GetValue()),
+		)
+	}
+	return fmt.Sprintf(
+		"Desc{fqName: %q, help: %q, constLabels: {%s}, variableLabels: %v}",
+		d.fqName,
+		d.help,
+		strings.Join(lpStrings, ","),
+		d.variableLab
