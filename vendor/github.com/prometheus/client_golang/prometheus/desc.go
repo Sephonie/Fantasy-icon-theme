@@ -195,4 +195,11 @@ func (d *Desc) String() string {
 		d.fqName,
 		d.help,
 		strings.Join(lpStrings, ","),
-		d.variableLab
+		d.variableLabels,
+	)
+}
+
+func checkLabelName(l string) bool {
+	return labelNameRE.MatchString(l) &&
+		!strings.HasPrefix(l, reservedLabelPrefix)
+}
