@@ -147,4 +147,35 @@
 // can be found in the global DefaultRegistry variable. With NewRegistry, you
 // can create a custom registry, or you can even implement the Registerer or
 // Gatherer interfaces yourself. The methods Register and Unregister work in
-// the same way on a custom registry as the global
+// the same way on a custom registry as the global functions Register and
+// Unregister on the default registry.
+//
+// There are a number of uses for custom registries: You can use registries
+// with special properties, see NewPedanticRegistry. You can avoid global state,
+// as it is imposed by the DefaultRegistry. You can use multiple registries at
+// the same time to expose different metrics in different ways. You can use
+// separate registries for testing purposes.
+//
+// Also note that the DefaultRegistry comes registered with a Collector for Go
+// runtime metrics (via NewGoCollector) and a Collector for process metrics (via
+// NewProcessCollector). With a custom registry, you are in control and decide
+// yourself about the Collectors to register.
+//
+// HTTP Exposition
+//
+// The Registry implements the Gatherer interface. The caller of the Gather
+// method can then expose the gathered metrics in some way. Usually, the metrics
+// are served via HTTP on the /metrics endpoint. That's happening in the example
+// above. The tools to expose metrics via HTTP are in the promhttp
+// sub-package. (The top-level functions in the prometheus package are
+// deprecated.)
+//
+// Pushing to the Pushgateway
+//
+// Function for pushing to the Pushgateway can be found in the push sub-package.
+//
+// Other Means of Exposition
+//
+// More ways of exposing metrics can easily be added. Sending metrics to
+// Graphite would be an example that will soon be implemented.
+package prometheus
