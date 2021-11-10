@@ -130,4 +130,118 @@ type HistogramOpts struct {
 	// Histogram. Histograms with the same fully-qualified name must have the
 	// same label names in their ConstLabels.
 	//
-	// Note that in
+	// Note that in most cases, labels have a value that varies during the
+	// lifetime of a process. Those labels are usually managed with a
+	// HistogramVec. ConstLabels serve only special purposes. One is for the
+	// special case where the value of a label does not change during the
+	// lifetime of a process, e.g. if the revision of the running binary is
+	// put into a label. Another, more advanced purpose is if more than one
+	// Collector needs to collect Histograms with the same fully-qualified
+	// name. In that case, those Summaries must differ in the values of
+	// their ConstLabels. See the Collector examples.
+	//
+	// If the value of a label never changes (not even between binaries),
+	// that label most likely should not be a label at all (but part of the
+	// metric name).
+	ConstLabels Labels
+
+	// Buckets defines the buckets into which observations are counted. Each
+	// element in the slice is the upper inclusive bound of a bucket. The
+	// values must be sorted in strictly increasing order. There is no need
+	// to add a highest bucket with +Inf bound, it will be added
+	// implicitly. The default value is DefBuckets.
+	Buckets []float64
+}
+
+// NewHistogram creates a new Histogram based on the provided HistogramOpts. It
+// panics if the buckets in HistogramOpts are not in strictly increasing order.
+func NewHistogram(opts HistogramOpts) Histogram {
+	return newHistogram(
+		NewDesc(
+			BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+			opts.Help,
+			nil,
+			opts.ConstLabels,
+		),
+		opts,
+	)
+}
+
+func newHistogram(desc *Desc, opts HistogramOpts, labelValues ...string) Histogram {
+	if len(desc.variableLabels) != len(labelValues) {
+		panic(errInconsistentCardinality)
+	}
+
+	for _, n := range desc.variableLabels {
+		if n == bucketLabel {
+			panic(errBucketLabelNotAllowed)
+		}
+	}
+	for _, lp := range desc.constLabelPairs {
+		if lp.GetName() == bucketLabel {
+			panic(errBucketLabelNotAllowed)
+		}
+	}
+
+	if len(opts.Buckets) == 0 {
+		opts.Buckets = DefBuckets
+	}
+
+	h := &histogram{
+		desc:        desc,
+		upperBounds: opts.Buckets,
+		labelPairs:  makeLabelPairs(desc, labelValues),
+	}
+	for i, upperBound := range h.upperBounds {
+		if i < len(h.upperBounds)-1 {
+			if upperBound >= h.upperBounds[i+1] {
+				panic(fmt.Errorf(
+					"histogram buckets must be in increasing order: %f >= %f",
+					upperBound, h.upperBounds[i+1],
+				))
+			}
+		} else {
+			if math.IsInf(upperBound, +1) {
+				// The +Inf bucket is implicit. Remove it here.
+				h.upperBounds = h.upperBounds[:i]
+			}
+		}
+	}
+	// Finally we know the final length of h.upperBounds and can make counts.
+	h.counts = make([]uint64, len(h.upperBounds))
+
+	h.init(h) // Init self-collection.
+	return h
+}
+
+type histogram struct {
+	// sumBits contains the bits of the float64 representing the sum of all
+	// observations. sumBits and count have to go first in the struct to
+	// guarantee alignment for atomic operations.
+	// http://golang.org/pkg/sync/atomic/#pkg-note-BUG
+	sumBits uint64
+	count   uint64
+
+	selfCollector
+	// Note that there is no mutex required.
+
+	desc *Desc
+
+	upperBounds []float64
+	counts      []uint64
+
+	labelPairs []*dto.LabelPair
+}
+
+func (h *histogram) Desc() *Desc {
+	return h.desc
+}
+
+func (h *histogram) Observe(v float64) {
+	// TODO(beorn7): For small numbers of buckets (<30), a linear search is
+	// slightly faster than the binary search. If we really care, we could
+	// switch from one search strategy to the other depending on the number
+	// of buckets.
+	//
+	// Microbenchmarks (BenchmarkHistogramNoLabels):
+	// 11 buckets: 38.3 ns/op linear - binary 48.7 ns/op
