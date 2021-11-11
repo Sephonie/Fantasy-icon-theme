@@ -245,3 +245,107 @@ func (h *histogram) Observe(v float64) {
 	//
 	// Microbenchmarks (BenchmarkHistogramNoLabels):
 	// 11 buckets: 38.3 ns/op linear - binary 48.7 ns/op
+	// 100 buckets: 78.1 ns/op linear - binary 54.9 ns/op
+	// 300 buckets: 154 ns/op linear - binary 61.6 ns/op
+	i := sort.SearchFloat64s(h.upperBounds, v)
+	if i < len(h.counts) {
+		atomic.AddUint64(&h.counts[i], 1)
+	}
+	atomic.AddUint64(&h.count, 1)
+	for {
+		oldBits := atomic.LoadUint64(&h.sumBits)
+		newBits := math.Float64bits(math.Float64frombits(oldBits) + v)
+		if atomic.CompareAndSwapUint64(&h.sumBits, oldBits, newBits) {
+			break
+		}
+	}
+}
+
+func (h *histogram) Write(out *dto.Metric) error {
+	his := &dto.Histogram{}
+	buckets := make([]*dto.Bucket, len(h.upperBounds))
+
+	his.SampleSum = proto.Float64(math.Float64frombits(atomic.LoadUint64(&h.sumBits)))
+	his.SampleCount = proto.Uint64(atomic.LoadUint64(&h.count))
+	var count uint64
+	for i, upperBound := range h.upperBounds {
+		count += atomic.LoadUint64(&h.counts[i])
+		buckets[i] = &dto.Bucket{
+			CumulativeCount: proto.Uint64(count),
+			UpperBound:      proto.Float64(upperBound),
+		}
+	}
+	his.Bucket = buckets
+	out.Histogram = his
+	out.Label = h.labelPairs
+	return nil
+}
+
+// HistogramVec is a Collector that bundles a set of Histograms that all share the
+// same Desc, but have different values for their variable labels. This is used
+// if you want to count the same thing partitioned by various dimensions
+// (e.g. HTTP request latencies, partitioned by status code and method). Create
+// instances with NewHistogramVec.
+type HistogramVec struct {
+	*MetricVec
+}
+
+// NewHistogramVec creates a new HistogramVec based on the provided HistogramOpts and
+// partitioned by the given label names. At least one label name must be
+// provided.
+func NewHistogramVec(opts HistogramOpts, labelNames []string) *HistogramVec {
+	desc := NewDesc(
+		BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+		opts.Help,
+		labelNames,
+		opts.ConstLabels,
+	)
+	return &HistogramVec{
+		MetricVec: newMetricVec(desc, func(lvs ...string) Metric {
+			return newHistogram(desc, opts, lvs...)
+		}),
+	}
+}
+
+// GetMetricWithLabelValues replaces the method of the same name in
+// MetricVec. The difference is that this method returns a Histogram and not a
+// Metric so that no type conversion is required.
+func (m *HistogramVec) GetMetricWithLabelValues(lvs ...string) (Histogram, error) {
+	metric, err := m.MetricVec.GetMetricWithLabelValues(lvs...)
+	if metric != nil {
+		return metric.(Histogram), err
+	}
+	return nil, err
+}
+
+// GetMetricWith replaces the method of the same name in MetricVec. The
+// difference is that this method returns a Histogram and not a Metric so that no
+// type conversion is required.
+func (m *HistogramVec) GetMetricWith(labels Labels) (Histogram, error) {
+	metric, err := m.MetricVec.GetMetricWith(labels)
+	if metric != nil {
+		return metric.(Histogram), err
+	}
+	return nil, err
+}
+
+// WithLabelValues works as GetMetricWithLabelValues, but panics where
+// GetMetricWithLabelValues would have returned an error. By not returning an
+// error, WithLabelValues allows shortcuts like
+//     myVec.WithLabelValues("404", "GET").Observe(42.21)
+func (m *HistogramVec) WithLabelValues(lvs ...string) Histogram {
+	return m.MetricVec.WithLabelValues(lvs...).(Histogram)
+}
+
+// With works as GetMetricWith, but panics where GetMetricWithLabels would have
+// returned an error. By not returning an error, With allows shortcuts like
+//     myVec.With(Labels{"code": "404", "method": "GET"}).Observe(42.21)
+func (m *HistogramVec) With(labels Labels) Histogram {
+	return m.MetricVec.With(labels).(Histogram)
+}
+
+type constHistogram struct {
+	desc       *Desc
+	count      uint64
+	sum        float64
+	buckets    m
