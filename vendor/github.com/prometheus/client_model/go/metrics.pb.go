@@ -113,3 +113,253 @@ func (m *Gauge) GetValue() float64 {
 }
 
 type Counter struct {
+	Value            *float64 `protobuf:"fixed64,1,opt,name=value" json:"value,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
+}
+
+func (m *Counter) Reset()         { *m = Counter{} }
+func (m *Counter) String() string { return proto.CompactTextString(m) }
+func (*Counter) ProtoMessage()    {}
+
+func (m *Counter) GetValue() float64 {
+	if m != nil && m.Value != nil {
+		return *m.Value
+	}
+	return 0
+}
+
+type Quantile struct {
+	Quantile         *float64 `protobuf:"fixed64,1,opt,name=quantile" json:"quantile,omitempty"`
+	Value            *float64 `protobuf:"fixed64,2,opt,name=value" json:"value,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
+}
+
+func (m *Quantile) Reset()         { *m = Quantile{} }
+func (m *Quantile) String() string { return proto.CompactTextString(m) }
+func (*Quantile) ProtoMessage()    {}
+
+func (m *Quantile) GetQuantile() float64 {
+	if m != nil && m.Quantile != nil {
+		return *m.Quantile
+	}
+	return 0
+}
+
+func (m *Quantile) GetValue() float64 {
+	if m != nil && m.Value != nil {
+		return *m.Value
+	}
+	return 0
+}
+
+type Summary struct {
+	SampleCount      *uint64     `protobuf:"varint,1,opt,name=sample_count" json:"sample_count,omitempty"`
+	SampleSum        *float64    `protobuf:"fixed64,2,opt,name=sample_sum" json:"sample_sum,omitempty"`
+	Quantile         []*Quantile `protobuf:"bytes,3,rep,name=quantile" json:"quantile,omitempty"`
+	XXX_unrecognized []byte      `json:"-"`
+}
+
+func (m *Summary) Reset()         { *m = Summary{} }
+func (m *Summary) String() string { return proto.CompactTextString(m) }
+func (*Summary) ProtoMessage()    {}
+
+func (m *Summary) GetSampleCount() uint64 {
+	if m != nil && m.SampleCount != nil {
+		return *m.SampleCount
+	}
+	return 0
+}
+
+func (m *Summary) GetSampleSum() float64 {
+	if m != nil && m.SampleSum != nil {
+		return *m.SampleSum
+	}
+	return 0
+}
+
+func (m *Summary) GetQuantile() []*Quantile {
+	if m != nil {
+		return m.Quantile
+	}
+	return nil
+}
+
+type Untyped struct {
+	Value            *float64 `protobuf:"fixed64,1,opt,name=value" json:"value,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
+}
+
+func (m *Untyped) Reset()         { *m = Untyped{} }
+func (m *Untyped) String() string { return proto.CompactTextString(m) }
+func (*Untyped) ProtoMessage()    {}
+
+func (m *Untyped) GetValue() float64 {
+	if m != nil && m.Value != nil {
+		return *m.Value
+	}
+	return 0
+}
+
+type Histogram struct {
+	SampleCount      *uint64   `protobuf:"varint,1,opt,name=sample_count" json:"sample_count,omitempty"`
+	SampleSum        *float64  `protobuf:"fixed64,2,opt,name=sample_sum" json:"sample_sum,omitempty"`
+	Bucket           []*Bucket `protobuf:"bytes,3,rep,name=bucket" json:"bucket,omitempty"`
+	XXX_unrecognized []byte    `json:"-"`
+}
+
+func (m *Histogram) Reset()         { *m = Histogram{} }
+func (m *Histogram) String() string { return proto.CompactTextString(m) }
+func (*Histogram) ProtoMessage()    {}
+
+func (m *Histogram) GetSampleCount() uint64 {
+	if m != nil && m.SampleCount != nil {
+		return *m.SampleCount
+	}
+	return 0
+}
+
+func (m *Histogram) GetSampleSum() float64 {
+	if m != nil && m.SampleSum != nil {
+		return *m.SampleSum
+	}
+	return 0
+}
+
+func (m *Histogram) GetBucket() []*Bucket {
+	if m != nil {
+		return m.Bucket
+	}
+	return nil
+}
+
+type Bucket struct {
+	CumulativeCount  *uint64  `protobuf:"varint,1,opt,name=cumulative_count" json:"cumulative_count,omitempty"`
+	UpperBound       *float64 `protobuf:"fixed64,2,opt,name=upper_bound" json:"upper_bound,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
+}
+
+func (m *Bucket) Reset()         { *m = Bucket{} }
+func (m *Bucket) String() string { return proto.CompactTextString(m) }
+func (*Bucket) ProtoMessage()    {}
+
+func (m *Bucket) GetCumulativeCount() uint64 {
+	if m != nil && m.CumulativeCount != nil {
+		return *m.CumulativeCount
+	}
+	return 0
+}
+
+func (m *Bucket) GetUpperBound() float64 {
+	if m != nil && m.UpperBound != nil {
+		return *m.UpperBound
+	}
+	return 0
+}
+
+type Metric struct {
+	Label            []*LabelPair `protobuf:"bytes,1,rep,name=label" json:"label,omitempty"`
+	Gauge            *Gauge       `protobuf:"bytes,2,opt,name=gauge" json:"gauge,omitempty"`
+	Counter          *Counter     `protobuf:"bytes,3,opt,name=counter" json:"counter,omitempty"`
+	Summary          *Summary     `protobuf:"bytes,4,opt,name=summary" json:"summary,omitempty"`
+	Untyped          *Untyped     `protobuf:"bytes,5,opt,name=untyped" json:"untyped,omitempty"`
+	Histogram        *Histogram   `protobuf:"bytes,7,opt,name=histogram" json:"histogram,omitempty"`
+	TimestampMs      *int64       `protobuf:"varint,6,opt,name=timestamp_ms" json:"timestamp_ms,omitempty"`
+	XXX_unrecognized []byte       `json:"-"`
+}
+
+func (m *Metric) Reset()         { *m = Metric{} }
+func (m *Metric) String() string { return proto.CompactTextString(m) }
+func (*Metric) ProtoMessage()    {}
+
+func (m *Metric) GetLabel() []*LabelPair {
+	if m != nil {
+		return m.Label
+	}
+	return nil
+}
+
+func (m *Metric) GetGauge() *Gauge {
+	if m != nil {
+		return m.Gauge
+	}
+	return nil
+}
+
+func (m *Metric) GetCounter() *Counter {
+	if m != nil {
+		return m.Counter
+	}
+	return nil
+}
+
+func (m *Metric) GetSummary() *Summary {
+	if m != nil {
+		return m.Summary
+	}
+	return nil
+}
+
+func (m *Metric) GetUntyped() *Untyped {
+	if m != nil {
+		return m.Untyped
+	}
+	return nil
+}
+
+func (m *Metric) GetHistogram() *Histogram {
+	if m != nil {
+		return m.Histogram
+	}
+	return nil
+}
+
+func (m *Metric) GetTimestampMs() int64 {
+	if m != nil && m.TimestampMs != nil {
+		return *m.TimestampMs
+	}
+	return 0
+}
+
+type MetricFamily struct {
+	Name             *string     `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Help             *string     `protobuf:"bytes,2,opt,name=help" json:"help,omitempty"`
+	Type             *MetricType `protobuf:"varint,3,opt,name=type,enum=io.prometheus.client.MetricType" json:"type,omitempty"`
+	Metric           []*Metric   `protobuf:"bytes,4,rep,name=metric" json:"metric,omitempty"`
+	XXX_unrecognized []byte      `json:"-"`
+}
+
+func (m *MetricFamily) Reset()         { *m = MetricFamily{} }
+func (m *MetricFamily) String() string { return proto.CompactTextString(m) }
+func (*MetricFamily) ProtoMessage()    {}
+
+func (m *MetricFamily) GetName() string {
+	if m != nil && m.Name != nil {
+		return *m.Name
+	}
+	return ""
+}
+
+func (m *MetricFamily) GetHelp() string {
+	if m != nil && m.Help != nil {
+		return *m.Help
+	}
+	return ""
+}
+
+func (m *MetricFamily) GetType() MetricType {
+	if m != nil && m.Type != nil {
+		return *m.Type
+	}
+	return MetricType_COUNTER
+}
+
+func (m *MetricFamily) GetMetric() []*Metric {
+	if m != nil {
+		return m.Metric
+	}
+	return nil
+}
+
+func init() {
+	proto.RegisterEnum("io.prometheus.client.MetricType", MetricType_name, MetricType_value)
+}
