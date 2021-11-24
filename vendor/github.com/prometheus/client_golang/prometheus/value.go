@@ -150,4 +150,85 @@ func (v *valueFunc) Write(out *dto.Metric) error {
 // changed. Users of this package will not have much use for it in regular
 // operations. However, when implementing custom Collectors, it is useful as a
 // throw-away metric that is generated on the fly to send it to Prometheus in
-// the Collect 
+// the Collect method. NewConstMetric returns an error if the length of
+// labelValues is not consistent with the variable labels in Desc.
+func NewConstMetric(desc *Desc, valueType ValueType, value float64, labelValues ...string) (Metric, error) {
+	if len(desc.variableLabels) != len(labelValues) {
+		return nil, errInconsistentCardinality
+	}
+	return &constMetric{
+		desc:       desc,
+		valType:    valueType,
+		val:        value,
+		labelPairs: makeLabelPairs(desc, labelValues),
+	}, nil
+}
+
+// MustNewConstMetric is a version of NewConstMetric that panics where
+// NewConstMetric would have returned an error.
+func MustNewConstMetric(desc *Desc, valueType ValueType, value float64, labelValues ...string) Metric {
+	m, err := NewConstMetric(desc, valueType, value, labelValues...)
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
+
+type constMetric struct {
+	desc       *Desc
+	valType    ValueType
+	val        float64
+	labelPairs []*dto.LabelPair
+}
+
+func (m *constMetric) Desc() *Desc {
+	return m.desc
+}
+
+func (m *constMetric) Write(out *dto.Metric) error {
+	return populateMetric(m.valType, m.val, m.labelPairs, out)
+}
+
+func populateMetric(
+	t ValueType,
+	v float64,
+	labelPairs []*dto.LabelPair,
+	m *dto.Metric,
+) error {
+	m.Label = labelPairs
+	switch t {
+	case CounterValue:
+		m.Counter = &dto.Counter{Value: proto.Float64(v)}
+	case GaugeValue:
+		m.Gauge = &dto.Gauge{Value: proto.Float64(v)}
+	case UntypedValue:
+		m.Untyped = &dto.Untyped{Value: proto.Float64(v)}
+	default:
+		return fmt.Errorf("encountered unknown type %v", t)
+	}
+	return nil
+}
+
+func makeLabelPairs(desc *Desc, labelValues []string) []*dto.LabelPair {
+	totalLen := len(desc.variableLabels) + len(desc.constLabelPairs)
+	if totalLen == 0 {
+		// Super fast path.
+		return nil
+	}
+	if len(desc.variableLabels) == 0 {
+		// Moderately fast path.
+		return desc.constLabelPairs
+	}
+	labelPairs := make([]*dto.LabelPair, 0, totalLen)
+	for i, n := range desc.variableLabels {
+		labelPairs = append(labelPairs, &dto.LabelPair{
+			Name:  proto.String(n),
+			Value: proto.String(labelValues[i]),
+		})
+	}
+	for _, lp := range desc.constLabelPairs {
+		labelPairs = append(labelPairs, lp)
+	}
+	sort.Sort(LabelPairSorter(labelPairs))
+	return labelPairs
+}
