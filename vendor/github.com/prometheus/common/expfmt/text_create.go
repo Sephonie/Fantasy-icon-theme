@@ -37,4 +37,162 @@ func MetricFamilyToText(out io.Writer, in *dto.MetricFamily) (int, error) {
 
 	// Fail-fast checks.
 	if len(in.Metric) == 0 {
-		return written, fmt
+		return written, fmt.Errorf("MetricFamily has no metrics: %s", in)
+	}
+	name := in.GetName()
+	if name == "" {
+		return written, fmt.Errorf("MetricFamily has no name: %s", in)
+	}
+
+	// Comments, first HELP, then TYPE.
+	if in.Help != nil {
+		n, err := fmt.Fprintf(
+			out, "# HELP %s %s\n",
+			name, escapeString(*in.Help, false),
+		)
+		written += n
+		if err != nil {
+			return written, err
+		}
+	}
+	metricType := in.GetType()
+	n, err := fmt.Fprintf(
+		out, "# TYPE %s %s\n",
+		name, strings.ToLower(metricType.String()),
+	)
+	written += n
+	if err != nil {
+		return written, err
+	}
+
+	// Finally the samples, one line for each.
+	for _, metric := range in.Metric {
+		switch metricType {
+		case dto.MetricType_COUNTER:
+			if metric.Counter == nil {
+				return written, fmt.Errorf(
+					"expected counter in metric %s %s", name, metric,
+				)
+			}
+			n, err = writeSample(
+				name, metric, "", "",
+				metric.Counter.GetValue(),
+				out,
+			)
+		case dto.MetricType_GAUGE:
+			if metric.Gauge == nil {
+				return written, fmt.Errorf(
+					"expected gauge in metric %s %s", name, metric,
+				)
+			}
+			n, err = writeSample(
+				name, metric, "", "",
+				metric.Gauge.GetValue(),
+				out,
+			)
+		case dto.MetricType_UNTYPED:
+			if metric.Untyped == nil {
+				return written, fmt.Errorf(
+					"expected untyped in metric %s %s", name, metric,
+				)
+			}
+			n, err = writeSample(
+				name, metric, "", "",
+				metric.Untyped.GetValue(),
+				out,
+			)
+		case dto.MetricType_SUMMARY:
+			if metric.Summary == nil {
+				return written, fmt.Errorf(
+					"expected summary in metric %s %s", name, metric,
+				)
+			}
+			for _, q := range metric.Summary.Quantile {
+				n, err = writeSample(
+					name, metric,
+					model.QuantileLabel, fmt.Sprint(q.GetQuantile()),
+					q.GetValue(),
+					out,
+				)
+				written += n
+				if err != nil {
+					return written, err
+				}
+			}
+			n, err = writeSample(
+				name+"_sum", metric, "", "",
+				metric.Summary.GetSampleSum(),
+				out,
+			)
+			if err != nil {
+				return written, err
+			}
+			written += n
+			n, err = writeSample(
+				name+"_count", metric, "", "",
+				float64(metric.Summary.GetSampleCount()),
+				out,
+			)
+		case dto.MetricType_HISTOGRAM:
+			if metric.Histogram == nil {
+				return written, fmt.Errorf(
+					"expected histogram in metric %s %s", name, metric,
+				)
+			}
+			infSeen := false
+			for _, q := range metric.Histogram.Bucket {
+				n, err = writeSample(
+					name+"_bucket", metric,
+					model.BucketLabel, fmt.Sprint(q.GetUpperBound()),
+					float64(q.GetCumulativeCount()),
+					out,
+				)
+				written += n
+				if err != nil {
+					return written, err
+				}
+				if math.IsInf(q.GetUpperBound(), +1) {
+					infSeen = true
+				}
+			}
+			if !infSeen {
+				n, err = writeSample(
+					name+"_bucket", metric,
+					model.BucketLabel, "+Inf",
+					float64(metric.Histogram.GetSampleCount()),
+					out,
+				)
+				if err != nil {
+					return written, err
+				}
+				written += n
+			}
+			n, err = writeSample(
+				name+"_sum", metric, "", "",
+				metric.Histogram.GetSampleSum(),
+				out,
+			)
+			if err != nil {
+				return written, err
+			}
+			written += n
+			n, err = writeSample(
+				name+"_count", metric, "", "",
+				float64(metric.Histogram.GetSampleCount()),
+				out,
+			)
+		default:
+			return written, fmt.Errorf(
+				"unexpected type in metric %s %s", name, metric,
+			)
+		}
+		written += n
+		if err != nil {
+			return written, err
+		}
+	}
+	return written, nil
+}
+
+// writeSample writes a single sample in text format to out, given the metric
+// name, the metric pro
