@@ -63,4 +63,26 @@ func Negotiate(h http.Header) Format {
 // NewEncoder returns a new encoder based on content type negotiation.
 func NewEncoder(w io.Writer, format Format) Encoder {
 	switch format {
-	case FmtProtoDe
+	case FmtProtoDelim:
+		return encoder(func(v *dto.MetricFamily) error {
+			_, err := pbutil.WriteDelimited(w, v)
+			return err
+		})
+	case FmtProtoCompact:
+		return encoder(func(v *dto.MetricFamily) error {
+			_, err := fmt.Fprintln(w, v.String())
+			return err
+		})
+	case FmtProtoText:
+		return encoder(func(v *dto.MetricFamily) error {
+			_, err := fmt.Fprintln(w, proto.MarshalTextString(v))
+			return err
+		})
+	case FmtText:
+		return encoder(func(v *dto.MetricFamily) error {
+			_, err := MetricFamilyToText(w, v)
+			return err
+		})
+	}
+	panic("expfmt.NewEncoder: unknown format")
+}
