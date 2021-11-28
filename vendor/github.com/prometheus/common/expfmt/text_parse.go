@@ -754,3 +754,5 @@ func histogramMetricName(name string) string {
 		return name[:len(name)-7]
 	default:
 		return name
+	}
+}
