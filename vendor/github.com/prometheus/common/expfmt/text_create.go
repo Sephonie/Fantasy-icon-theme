@@ -195,4 +195,109 @@ func MetricFamilyToText(out io.Writer, in *dto.MetricFamily) (int, error) {
 }
 
 // writeSample writes a single sample in text format to out, given the metric
-// name, the metric pro
+// name, the metric proto message itself, optionally an additional label name
+// and value (use empty strings if not required), and the value. The function
+// returns the number of bytes written and any error encountered.
+func writeSample(
+	name string,
+	metric *dto.Metric,
+	additionalLabelName, additionalLabelValue string,
+	value float64,
+	out io.Writer,
+) (int, error) {
+	var written int
+	n, err := fmt.Fprint(out, name)
+	written += n
+	if err != nil {
+		return written, err
+	}
+	n, err = labelPairsToText(
+		metric.Label,
+		additionalLabelName, additionalLabelValue,
+		out,
+	)
+	written += n
+	if err != nil {
+		return written, err
+	}
+	n, err = fmt.Fprintf(out, " %v", value)
+	written += n
+	if err != nil {
+		return written, err
+	}
+	if metric.TimestampMs != nil {
+		n, err = fmt.Fprintf(out, " %v", *metric.TimestampMs)
+		written += n
+		if err != nil {
+			return written, err
+		}
+	}
+	n, err = out.Write([]byte{'\n'})
+	written += n
+	if err != nil {
+		return written, err
+	}
+	return written, nil
+}
+
+// labelPairsToText converts a slice of LabelPair proto messages plus the
+// explicitly given additional label pair into text formatted as required by the
+// text format and writes it to 'out'. An empty slice in combination with an
+// empty string 'additionalLabelName' results in nothing being
+// written. Otherwise, the label pairs are written, escaped as required by the
+// text format, and enclosed in '{...}'. The function returns the number of
+// bytes written and any error encountered.
+func labelPairsToText(
+	in []*dto.LabelPair,
+	additionalLabelName, additionalLabelValue string,
+	out io.Writer,
+) (int, error) {
+	if len(in) == 0 && additionalLabelName == "" {
+		return 0, nil
+	}
+	var written int
+	separator := '{'
+	for _, lp := range in {
+		n, err := fmt.Fprintf(
+			out, `%c%s="%s"`,
+			separator, lp.GetName(), escapeString(lp.GetValue(), true),
+		)
+		written += n
+		if err != nil {
+			return written, err
+		}
+		separator = ','
+	}
+	if additionalLabelName != "" {
+		n, err := fmt.Fprintf(
+			out, `%c%s="%s"`,
+			separator, additionalLabelName,
+			escapeString(additionalLabelValue, true),
+		)
+		written += n
+		if err != nil {
+			return written, err
+		}
+	}
+	n, err := out.Write([]byte{'}'})
+	written += n
+	if err != nil {
+		return written, err
+	}
+	return written, nil
+}
+
+var (
+	escape                = strings.NewReplacer("\\", `\\`, "\n", `\n`)
+	escapeWithDoubleQuote = strings.NewReplacer("\\", `\\`, "\n", `\n`, "\"", `\"`)
+)
+
+// escapeString replaces '\' by '\\', new line character by '\n', and - if
+// includeDoubleQuote is true - '"' by '\"'.
+func escapeString(v string, includeDoubleQuote bool) string {
+	if includeDoubleQuote {
+		return escapeWithDoubleQuote.Replace(v)
+	}
+
+	return escape.Replace(v)
+}
