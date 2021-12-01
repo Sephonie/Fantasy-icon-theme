@@ -89,4 +89,122 @@ var LabelNameRE = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
 // therewith.
 type LabelName string
 
-// IsValid is true iff th
+// IsValid is true iff the label name matches the pattern of LabelNameRE. This
+// method, however, does not use LabelNameRE for the check but a much faster
+// hardcoded implementation.
+func (ln LabelName) IsValid() bool {
+	if len(ln) == 0 {
+		return false
+	}
+	for i, b := range ln {
+		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9' && i > 0)) {
+			return false
+		}
+	}
+	return true
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (ln *LabelName) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	if !LabelName(s).IsValid() {
+		return fmt.Errorf("%q is not a valid label name", s)
+	}
+	*ln = LabelName(s)
+	return nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (ln *LabelName) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	if !LabelName(s).IsValid() {
+		return fmt.Errorf("%q is not a valid label name", s)
+	}
+	*ln = LabelName(s)
+	return nil
+}
+
+// LabelNames is a sortable LabelName slice. In implements sort.Interface.
+type LabelNames []LabelName
+
+func (l LabelNames) Len() int {
+	return len(l)
+}
+
+func (l LabelNames) Less(i, j int) bool {
+	return l[i] < l[j]
+}
+
+func (l LabelNames) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
+
+func (l LabelNames) String() string {
+	labelStrings := make([]string, 0, len(l))
+	for _, label := range l {
+		labelStrings = append(labelStrings, string(label))
+	}
+	return strings.Join(labelStrings, ", ")
+}
+
+// A LabelValue is an associated value for a LabelName.
+type LabelValue string
+
+// IsValid returns true iff the string is a valid UTF8.
+func (lv LabelValue) IsValid() bool {
+	return utf8.ValidString(string(lv))
+}
+
+// LabelValues is a sortable LabelValue slice. It implements sort.Interface.
+type LabelValues []LabelValue
+
+func (l LabelValues) Len() int {
+	return len(l)
+}
+
+func (l LabelValues) Less(i, j int) bool {
+	return string(l[i]) < string(l[j])
+}
+
+func (l LabelValues) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
+
+// LabelPair pairs a name with a value.
+type LabelPair struct {
+	Name  LabelName
+	Value LabelValue
+}
+
+// LabelPairs is a sortable slice of LabelPair pointers. It implements
+// sort.Interface.
+type LabelPairs []*LabelPair
+
+func (l LabelPairs) Len() int {
+	return len(l)
+}
+
+func (l LabelPairs) Less(i, j int) bool {
+	switch {
+	case l[i].Name > l[j].Name:
+		return false
+	case l[i].Name < l[j].Name:
+		return true
+	case l[i].Value > l[j].Value:
+		return false
+	case l[i].Value < l[j].Value:
+		return true
+	default:
+		return false
+	}
+}
+
+func (l LabelPairs) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
