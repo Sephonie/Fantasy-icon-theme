@@ -87,4 +87,58 @@ func labelSetToFastFingerprint(ls LabelSet) Fingerprint {
 		sum := hashNew()
 		sum = hashAdd(sum, string(labelName))
 		sum = hashAddByte(sum, SeparatorByte)
-		su
+		sum = hashAdd(sum, string(labelValue))
+		result ^= sum
+	}
+	return Fingerprint(result)
+}
+
+// SignatureForLabels works like LabelsToSignature but takes a Metric as
+// parameter (rather than a label map) and only includes the labels with the
+// specified LabelNames into the signature calculation. The labels passed in
+// will be sorted by this function.
+func SignatureForLabels(m Metric, labels ...LabelName) uint64 {
+	if len(labels) == 0 {
+		return emptyLabelSignature
+	}
+
+	sort.Sort(LabelNames(labels))
+
+	sum := hashNew()
+	for _, label := range labels {
+		sum = hashAdd(sum, string(label))
+		sum = hashAddByte(sum, SeparatorByte)
+		sum = hashAdd(sum, string(m[label]))
+		sum = hashAddByte(sum, SeparatorByte)
+	}
+	return sum
+}
+
+// SignatureWithoutLabels works like LabelsToSignature but takes a Metric as
+// parameter (rather than a label map) and excludes the labels with any of the
+// specified LabelNames from the signature calculation.
+func SignatureWithoutLabels(m Metric, labels map[LabelName]struct{}) uint64 {
+	if len(m) == 0 {
+		return emptyLabelSignature
+	}
+
+	labelNames := make(LabelNames, 0, len(m))
+	for labelName := range m {
+		if _, exclude := labels[labelName]; !exclude {
+			labelNames = append(labelNames, labelName)
+		}
+	}
+	if len(labelNames) == 0 {
+		return emptyLabelSignature
+	}
+	sort.Sort(labelNames)
+
+	sum := hashNew()
+	for _, labelName := range labelNames {
+		sum = hashAdd(sum, string(labelName))
+		sum = hashAddByte(sum, SeparatorByte)
+		sum = hashAdd(sum, string(m[labelName]))
+		sum = hashAddByte(sum, SeparatorByte)
+	}
+	return sum
+}
