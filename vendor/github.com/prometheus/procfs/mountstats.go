@@ -139,4 +139,104 @@ type NFSEventsStats struct {
 	ShortRead uint64
 	// Number of times the NFS server wrote less data than expected while writing.
 	ShortWrite uint64
-	// Number of times the NFS server indicated EJUKEBOX; retriev
+	// Number of times the NFS server indicated EJUKEBOX; retrieving data from
+	// offline storage.
+	JukeboxDelay uint64
+	// Number of NFS v4.1+ pNFS reads.
+	PNFSRead uint64
+	// Number of NFS v4.1+ pNFS writes.
+	PNFSWrite uint64
+}
+
+// A NFSOperationStats contains statistics for a single operation.
+type NFSOperationStats struct {
+	// The name of the operation.
+	Operation string
+	// Number of requests performed for this operation.
+	Requests uint64
+	// Number of times an actual RPC request has been transmitted for this operation.
+	Transmissions uint64
+	// Number of times a request has had a major timeout.
+	MajorTimeouts uint64
+	// Number of bytes sent for this operation, including RPC headers and payload.
+	BytesSent uint64
+	// Number of bytes received for this operation, including RPC headers and payload.
+	BytesReceived uint64
+	// Duration all requests spent queued for transmission before they were sent.
+	CumulativeQueueTime time.Duration
+	// Duration it took to get a reply back after the request was transmitted.
+	CumulativeTotalResponseTime time.Duration
+	// Duration from when a request was enqueued to when it was completely handled.
+	CumulativeTotalRequestTime time.Duration
+}
+
+// A NFSTransportStats contains statistics for the NFS mount RPC requests and
+// responses.
+type NFSTransportStats struct {
+	// The local port used for the NFS mount.
+	Port uint64
+	// Number of times the client has had to establish a connection from scratch
+	// to the NFS server.
+	Bind uint64
+	// Number of times the client has made a TCP connection to the NFS server.
+	Connect uint64
+	// Duration (in jiffies, a kernel internal unit of time) the NFS mount has
+	// spent waiting for connections to the server to be established.
+	ConnectIdleTime uint64
+	// Duration since the NFS mount last saw any RPC traffic.
+	IdleTime time.Duration
+	// Number of RPC requests for this mount sent to the NFS server.
+	Sends uint64
+	// Number of RPC responses for this mount received from the NFS server.
+	Receives uint64
+	// Number of times the NFS server sent a response with a transaction ID
+	// unknown to this client.
+	BadTransactionIDs uint64
+	// A running counter, incremented on each request as the current difference
+	// ebetween sends and receives.
+	CumulativeActiveRequests uint64
+	// A running counter, incremented on each request by the current backlog
+	// queue size.
+	CumulativeBacklog uint64
+
+	// Stats below only available with stat version 1.1.
+
+	// Maximum number of simultaneously active RPC requests ever used.
+	MaximumRPCSlotsUsed uint64
+	// A running counter, incremented on each request as the current size of the
+	// sending queue.
+	CumulativeSendingQueue uint64
+	// A running counter, incremented on each request as the current size of the
+	// pending queue.
+	CumulativePendingQueue uint64
+}
+
+// parseMountStats parses a /proc/[pid]/mountstats file and returns a slice
+// of Mount structures containing detailed information about each mount.
+// If available, statistics for each mount are parsed as well.
+func parseMountStats(r io.Reader) ([]*Mount, error) {
+	const (
+		device            = "device"
+		statVersionPrefix = "statvers="
+
+		nfs3Type = "nfs"
+		nfs4Type = "nfs4"
+	)
+
+	var mounts []*Mount
+
+	s := bufio.NewScanner(r)
+	for s.Scan() {
+		// Only look for device entries in this function
+		ss := strings.Fields(string(s.Bytes()))
+		if len(ss) == 0 || ss[0] != device {
+			continue
+		}
+
+		m, err := parseMount(ss)
+		if err != nil {
+			return nil, err
+		}
+
+		// Does this mount also possess statistics information?
+		if len(ss) > deviceEntryLen {
