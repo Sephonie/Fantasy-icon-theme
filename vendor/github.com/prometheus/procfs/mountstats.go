@@ -240,3 +240,160 @@ func parseMountStats(r io.Reader) ([]*Mount, error) {
 
 		// Does this mount also possess statistics information?
 		if len(ss) > deviceEntryLen {
+			// Only NFSv3 and v4 are supported for parsing statistics
+			if m.Type != nfs3Type && m.Type != nfs4Type {
+				return nil, fmt.Errorf("cannot parse MountStats for fstype %q", m.Type)
+			}
+
+			statVersion := strings.TrimPrefix(ss[8], statVersionPrefix)
+
+			stats, err := parseMountStatsNFS(s, statVersion)
+			if err != nil {
+				return nil, err
+			}
+
+			m.Stats = stats
+		}
+
+		mounts = append(mounts, m)
+	}
+
+	return mounts, s.Err()
+}
+
+// parseMount parses an entry in /proc/[pid]/mountstats in the format:
+//   device [device] mounted on [mount] with fstype [type]
+func parseMount(ss []string) (*Mount, error) {
+	if len(ss) < deviceEntryLen {
+		return nil, fmt.Errorf("invalid device entry: %v", ss)
+	}
+
+	// Check for specific words appearing at specific indices to ensure
+	// the format is consistent with what we expect
+	format := []struct {
+		i int
+		s string
+	}{
+		{i: 0, s: "device"},
+		{i: 2, s: "mounted"},
+		{i: 3, s: "on"},
+		{i: 5, s: "with"},
+		{i: 6, s: "fstype"},
+	}
+
+	for _, f := range format {
+		if ss[f.i] != f.s {
+			return nil, fmt.Errorf("invalid device entry: %v", ss)
+		}
+	}
+
+	return &Mount{
+		Device: ss[1],
+		Mount:  ss[4],
+		Type:   ss[7],
+	}, nil
+}
+
+// parseMountStatsNFS parses a MountStatsNFS by scanning additional information
+// related to NFS statistics.
+func parseMountStatsNFS(s *bufio.Scanner, statVersion string) (*MountStatsNFS, error) {
+	// Field indicators for parsing specific types of data
+	const (
+		fieldAge        = "age:"
+		fieldBytes      = "bytes:"
+		fieldEvents     = "events:"
+		fieldPerOpStats = "per-op"
+		fieldTransport  = "xprt:"
+	)
+
+	stats := &MountStatsNFS{
+		StatVersion: statVersion,
+	}
+
+	for s.Scan() {
+		ss := strings.Fields(string(s.Bytes()))
+		if len(ss) == 0 {
+			break
+		}
+		if len(ss) < 2 {
+			return nil, fmt.Errorf("not enough information for NFS stats: %v", ss)
+		}
+
+		switch ss[0] {
+		case fieldAge:
+			// Age integer is in seconds
+			d, err := time.ParseDuration(ss[1] + "s")
+			if err != nil {
+				return nil, err
+			}
+
+			stats.Age = d
+		case fieldBytes:
+			bstats, err := parseNFSBytesStats(ss[1:])
+			if err != nil {
+				return nil, err
+			}
+
+			stats.Bytes = *bstats
+		case fieldEvents:
+			estats, err := parseNFSEventsStats(ss[1:])
+			if err != nil {
+				return nil, err
+			}
+
+			stats.Events = *estats
+		case fieldTransport:
+			if len(ss) < 3 {
+				return nil, fmt.Errorf("not enough information for NFS transport stats: %v", ss)
+			}
+
+			tstats, err := parseNFSTransportStats(ss[2:], statVersion)
+			if err != nil {
+				return nil, err
+			}
+
+			stats.Transport = *tstats
+		}
+
+		// When encountering "per-operation statistics", we must break this
+		// loop and parse them separately to ensure we can terminate parsing
+		// before reaching another device entry; hence why this 'if' statement
+		// is not just another switch case
+		if ss[0] == fieldPerOpStats {
+			break
+		}
+	}
+
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+
+	// NFS per-operation stats appear last before the next device entry
+	perOpStats, err := parseNFSOperationStats(s)
+	if err != nil {
+		return nil, err
+	}
+
+	stats.Operations = perOpStats
+
+	return stats, nil
+}
+
+// parseNFSBytesStats parses a NFSBytesStats line using an input set of
+// integer fields.
+func parseNFSBytesStats(ss []string) (*NFSBytesStats, error) {
+	if len(ss) != fieldBytesLen {
+		return nil, fmt.Errorf("invalid NFS bytes stats: %v", ss)
+	}
+
+	ns := make([]uint64, 0, fieldBytesLen)
+	for _, s := range ss {
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		ns = append(ns, n)
+	}
+
+	return &NFSBytesS
