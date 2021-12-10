@@ -396,4 +396,127 @@ func parseNFSBytesStats(ss []string) (*NFSBytesStats, error) {
 		ns = append(ns, n)
 	}
 
-	return &NFSBytesS
+	return &NFSBytesStats{
+		Read:        ns[0],
+		Write:       ns[1],
+		DirectRead:  ns[2],
+		DirectWrite: ns[3],
+		ReadTotal:   ns[4],
+		WriteTotal:  ns[5],
+		ReadPages:   ns[6],
+		WritePages:  ns[7],
+	}, nil
+}
+
+// parseNFSEventsStats parses a NFSEventsStats line using an input set of
+// integer fields.
+func parseNFSEventsStats(ss []string) (*NFSEventsStats, error) {
+	if len(ss) != fieldEventsLen {
+		return nil, fmt.Errorf("invalid NFS events stats: %v", ss)
+	}
+
+	ns := make([]uint64, 0, fieldEventsLen)
+	for _, s := range ss {
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		ns = append(ns, n)
+	}
+
+	return &NFSEventsStats{
+		InodeRevalidate:     ns[0],
+		DnodeRevalidate:     ns[1],
+		DataInvalidate:      ns[2],
+		AttributeInvalidate: ns[3],
+		VFSOpen:             ns[4],
+		VFSLookup:           ns[5],
+		VFSAccess:           ns[6],
+		VFSUpdatePage:       ns[7],
+		VFSReadPage:         ns[8],
+		VFSReadPages:        ns[9],
+		VFSWritePage:        ns[10],
+		VFSWritePages:       ns[11],
+		VFSGetdents:         ns[12],
+		VFSSetattr:          ns[13],
+		VFSFlush:            ns[14],
+		VFSFsync:            ns[15],
+		VFSLock:             ns[16],
+		VFSFileRelease:      ns[17],
+		CongestionWait:      ns[18],
+		Truncation:          ns[19],
+		WriteExtension:      ns[20],
+		SillyRename:         ns[21],
+		ShortRead:           ns[22],
+		ShortWrite:          ns[23],
+		JukeboxDelay:        ns[24],
+		PNFSRead:            ns[25],
+		PNFSWrite:           ns[26],
+	}, nil
+}
+
+// parseNFSOperationStats parses a slice of NFSOperationStats by scanning
+// additional information about per-operation statistics until an empty
+// line is reached.
+func parseNFSOperationStats(s *bufio.Scanner) ([]NFSOperationStats, error) {
+	const (
+		// Number of expected fields in each per-operation statistics set
+		numFields = 9
+	)
+
+	var ops []NFSOperationStats
+
+	for s.Scan() {
+		ss := strings.Fields(string(s.Bytes()))
+		if len(ss) == 0 {
+			// Must break when reading a blank line after per-operation stats to
+			// enable top-level function to parse the next device entry
+			break
+		}
+
+		if len(ss) != numFields {
+			return nil, fmt.Errorf("invalid NFS per-operations stats: %v", ss)
+		}
+
+		// Skip string operation name for integers
+		ns := make([]uint64, 0, numFields-1)
+		for _, st := range ss[1:] {
+			n, err := strconv.ParseUint(st, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+
+			ns = append(ns, n)
+		}
+
+		ops = append(ops, NFSOperationStats{
+			Operation:                   strings.TrimSuffix(ss[0], ":"),
+			Requests:                    ns[0],
+			Transmissions:               ns[1],
+			MajorTimeouts:               ns[2],
+			BytesSent:                   ns[3],
+			BytesReceived:               ns[4],
+			CumulativeQueueTime:         time.Duration(ns[5]) * time.Millisecond,
+			CumulativeTotalResponseTime: time.Duration(ns[6]) * time.Millisecond,
+			CumulativeTotalRequestTime:  time.Duration(ns[7]) * time.Millisecond,
+		})
+	}
+
+	return ops, s.Err()
+}
+
+// parseNFSTransportStats parses a NFSTransportStats line using an input set of
+// integer fields matched to a specific stats version.
+func parseNFSTransportStats(ss []string, statVersion string) (*NFSTransportStats, error) {
+	switch statVersion {
+	case statVersion10:
+		if len(ss) != fieldTransport10Len {
+			return nil, fmt.Errorf("invalid NFS transport stats 1.0 statement: %v", ss)
+		}
+	case statVersion11:
+		if len(ss) != fieldTransport11Len {
+			return nil, fmt.Errorf("invalid NFS transport stats 1.1 statement: %v", ss)
+		}
+	default:
+		return nil, fmt.Err
