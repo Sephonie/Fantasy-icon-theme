@@ -519,4 +519,38 @@ func parseNFSTransportStats(ss []string, statVersion string) (*NFSTransportStats
 			return nil, fmt.Errorf("invalid NFS transport stats 1.1 statement: %v", ss)
 		}
 	default:
-		return nil, fmt.Err
+		return nil, fmt.Errorf("unrecognized NFS transport stats version: %q", statVersion)
+	}
+
+	// Allocate enough for v1.1 stats since zero value for v1.1 stats will be okay
+	// in a v1.0 response.
+	//
+	// Note: slice length must be set to length of v1.1 stats to avoid a panic when
+	// only v1.0 stats are present.
+	// See: https://github.com/prometheus/node_exporter/issues/571.
+	ns := make([]uint64, fieldTransport11Len)
+	for i, s := range ss {
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		ns[i] = n
+	}
+
+	return &NFSTransportStats{
+		Port:                     ns[0],
+		Bind:                     ns[1],
+		Connect:                  ns[2],
+		ConnectIdleTime:          ns[3],
+		IdleTime:                 time.Duration(ns[4]) * time.Second,
+		Sends:                    ns[5],
+		Receives:                 ns[6],
+		BadTransactionIDs:        ns[7],
+		CumulativeActiveRequests: ns[8],
+		CumulativeBacklog:        ns[9],
+		MaximumRPCSlotsUsed:      ns[10],
+		CumulativeSendingQueue:   ns[11],
+		CumulativePendingQueue:   ns[12],
+	}, nil
+}
