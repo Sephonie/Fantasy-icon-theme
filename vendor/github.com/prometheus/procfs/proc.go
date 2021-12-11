@@ -122,4 +122,103 @@ func (p Proc) Comm() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.C
+	defer f.Close()
+
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(data)), nil
+}
+
+// Executable returns the absolute path of the executable command of a process.
+func (p Proc) Executable() (string, error) {
+	exe, err := os.Readlink(p.path("exe"))
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+
+	return exe, err
+}
+
+// FileDescriptors returns the currently open file descriptors of a process.
+func (p Proc) FileDescriptors() ([]uintptr, error) {
+	names, err := p.fileDescriptors()
+	if err != nil {
+		return nil, err
+	}
+
+	fds := make([]uintptr, len(names))
+	for i, n := range names {
+		fd, err := strconv.ParseInt(n, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse fd %s: %s", n, err)
+		}
+		fds[i] = uintptr(fd)
+	}
+
+	return fds, nil
+}
+
+// FileDescriptorTargets returns the targets of all file descriptors of a process.
+// If a file descriptor is not a symlink to a file (like a socket), that value will be the empty string.
+func (p Proc) FileDescriptorTargets() ([]string, error) {
+	names, err := p.fileDescriptors()
+	if err != nil {
+		return nil, err
+	}
+
+	targets := make([]string, len(names))
+
+	for i, name := range names {
+		target, err := os.Readlink(p.path("fd", name))
+		if err == nil {
+			targets[i] = target
+		}
+	}
+
+	return targets, nil
+}
+
+// FileDescriptorsLen returns the number of currently open file descriptors of
+// a process.
+func (p Proc) FileDescriptorsLen() (int, error) {
+	fds, err := p.fileDescriptors()
+	if err != nil {
+		return 0, err
+	}
+
+	return len(fds), nil
+}
+
+// MountStats retrieves statistics and configuration for mount points in a
+// process's namespace.
+func (p Proc) MountStats() ([]*Mount, error) {
+	f, err := os.Open(p.path("mountstats"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return parseMountStats(f)
+}
+
+func (p Proc) fileDescriptors() ([]string, error) {
+	d, err := os.Open(p.path("fd"))
+	if err != nil {
+		return nil, err
+	}
+	defer d.Close()
+
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		return nil, fmt.Errorf("could not read %s: %s", d.Name(), err)
+	}
+
+	return names, nil
+}
+
+func (p Proc) path(pa ...string) string {
+	return p.fs.Path(append([]string{strconv.Itoa(p.PID)}, pa...)...)
+}
