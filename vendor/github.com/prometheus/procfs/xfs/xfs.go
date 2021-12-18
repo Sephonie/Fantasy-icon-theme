@@ -71,4 +71,93 @@ type BlockMappingStats struct {
 }
 
 // DirectoryOperationStats contains statistics regarding XFS directory entries.
-type DirectoryOperationStats str
+type DirectoryOperationStats struct {
+	Lookups  uint32
+	Creates  uint32
+	Removes  uint32
+	Getdents uint32
+}
+
+// TransactionStats contains statistics regarding XFS metadata transactions.
+type TransactionStats struct {
+	Sync  uint32
+	Async uint32
+	Empty uint32
+}
+
+// InodeOperationStats contains statistics regarding XFS inode operations.
+type InodeOperationStats struct {
+	Attempts        uint32
+	Found           uint32
+	Recycle         uint32
+	Missed          uint32
+	Duplicate       uint32
+	Reclaims        uint32
+	AttributeChange uint32
+}
+
+// LogOperationStats contains statistics regarding the XFS log buffer.
+type LogOperationStats struct {
+	Writes            uint32
+	Blocks            uint32
+	NoInternalBuffers uint32
+	Force             uint32
+	ForceSleep        uint32
+}
+
+// ReadWriteStats contains statistics regarding the number of read and write
+// system calls for XFS filesystems.
+type ReadWriteStats struct {
+	Read  uint32
+	Write uint32
+}
+
+// AttributeOperationStats contains statistics regarding manipulation of
+// XFS extended file attributes.
+type AttributeOperationStats struct {
+	Get    uint32
+	Set    uint32
+	Remove uint32
+	List   uint32
+}
+
+// InodeClusteringStats contains statistics regarding XFS inode clustering
+// operations.
+type InodeClusteringStats struct {
+	Iflush     uint32
+	Flush      uint32
+	FlushInode uint32
+}
+
+// VnodeStats contains statistics regarding XFS vnode operations.
+type VnodeStats struct {
+	Active   uint32
+	Allocate uint32
+	Get      uint32
+	Hold     uint32
+	Release  uint32
+	Reclaim  uint32
+	Remove   uint32
+	Free     uint32
+}
+
+// BufferStats contains statistics regarding XFS read/write I/O buffers.
+type BufferStats struct {
+	Get             uint32
+	Create          uint32
+	GetLocked       uint32
+	GetLockedWaited uint32
+	BusyLocked      uint32
+	MissLocked      uint32
+	PageRetries     uint32
+	PageFound       uint32
+	GetRead         uint32
+}
+
+// ExtendedPrecisionStats contains high precision counters used to track the
+// total number of bytes read, written, or flushed, during XFS operations.
+type ExtendedPrecisionStats struct {
+	FlushBytes uint64
+	WriteBytes uint64
+	ReadBytes  uint64
+}
