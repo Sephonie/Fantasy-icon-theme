@@ -59,4 +59,26 @@ func Int64VarP(p *int64, name, shorthand string, value int64, usage string) {
 
 // Int64 defines an int64 flag with specified name, default value, and usage string.
 // The return value is the address of an int64 variable that stores the value of the flag.
-func (f *FlagSet) Int64(
+func (f *FlagSet) Int64(name string, value int64, usage string) *int64 {
+	p := new(int64)
+	f.Int64VarP(p, name, "", value, usage)
+	return p
+}
+
+// Int64P is like Int64, but accepts a shorthand letter that can be used after a single dash.
+func (f *FlagSet) Int64P(name, shorthand string, value int64, usage string) *int64 {
+	p := new(int64)
+	f.Int64VarP(p, name, shorthand, value, usage)
+	return p
+}
+
+// Int64 defines an int64 flag with specified name, default value, and usage string.
+// The return value is the address of an int64 variable that stores the value of the flag.
+func Int64(name string, value int64, usage string) *int64 {
+	return CommandLine.Int64P(name, "", value, usage)
+}
+
+// Int64P is like Int64, but accepts a shorthand letter that can be used after a single dash.
+func Int64P(name, shorthand string, value int64, usage string) *int64 {
+	return CommandLine.Int64P(name, shorthand, value, usage)
+}
