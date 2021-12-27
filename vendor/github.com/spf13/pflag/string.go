@@ -54,4 +54,27 @@ func StringVarP(p *string, name, shorthand string, value string, usage string) {
 }
 
 // String defines a string flag with specified name, default value, and usage string.
-// The return value is the address of a string variable that stores t
+// The return value is the address of a string variable that stores the value of the flag.
+func (f *FlagSet) String(name string, value string, usage string) *string {
+	p := new(string)
+	f.StringVarP(p, name, "", value, usage)
+	return p
+}
+
+// StringP is like String, but accepts a shorthand letter that can be used after a single dash.
+func (f *FlagSet) StringP(name, shorthand string, value string, usage string) *string {
+	p := new(string)
+	f.StringVarP(p, name, shorthand, value, usage)
+	return p
+}
+
+// String defines a string flag with specified name, default value, and usage string.
+// The return value is the address of a string variable that stores the value of the flag.
+func String(name string, value string, usage string) *string {
+	return CommandLine.StringP(name, "", value, usage)
+}
+
+// StringP is like String, but accepts a shorthand letter that can be used after a single dash.
+func StringP(name, shorthand string, value string, usage string) *string {
+	return CommandLine.StringP(name, shorthand, value, usage)
+}
