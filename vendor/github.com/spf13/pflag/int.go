@@ -49,4 +49,36 @@ func (f *FlagSet) IntVarP(p *int, name, shorthand string, value int, usage strin
 // IntVar defines an int flag with specified name, default value, and usage string.
 // The argument p points to an int variable in which to store the value of the flag.
 func IntVar(p *int, name string, value int, usage string) {
-	CommandLine.
+	CommandLine.VarP(newIntValue(value, p), name, "", usage)
+}
+
+// IntVarP is like IntVar, but accepts a shorthand letter that can be used after a single dash.
+func IntVarP(p *int, name, shorthand string, value int, usage string) {
+	CommandLine.VarP(newIntValue(value, p), name, shorthand, usage)
+}
+
+// Int defines an int flag with specified name, default value, and usage string.
+// The return value is the address of an int variable that stores the value of the flag.
+func (f *FlagSet) Int(name string, value int, usage string) *int {
+	p := new(int)
+	f.IntVarP(p, name, "", value, usage)
+	return p
+}
+
+// IntP is like Int, but accepts a shorthand letter that can be used after a single dash.
+func (f *FlagSet) IntP(name, shorthand string, value int, usage string) *int {
+	p := new(int)
+	f.IntVarP(p, name, shorthand, value, usage)
+	return p
+}
+
+// Int defines an int flag with specified name, default value, and usage string.
+// The return value is the address of an int variable that stores the value of the flag.
+func Int(name string, value int, usage string) *int {
+	return CommandLine.IntP(name, "", value, usage)
+}
+
+// IntP is like Int, but accepts a shorthand letter that can be used after a single dash.
+func IntP(name, shorthand string, value int, usage string) *int {
+	return CommandLine.IntP(name, shorthand, value, usage)
+}
