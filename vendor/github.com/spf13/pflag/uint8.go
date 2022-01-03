@@ -77,4 +77,12 @@ func (f *FlagSet) Uint8P(name, shorthand string, value uint8, usage string) *uin
 }
 
 // Uint8 defines a uint8 flag with specified name, default value, and usage string.
-// The return value is the address of a uin
+// The return value is the address of a uint8 variable that stores the value of the flag.
+func Uint8(name string, value uint8, usage string) *uint8 {
+	return CommandLine.Uint8P(name, "", value, usage)
+}
+
+// Uint8P is like Uint8, but accepts a shorthand letter that can be used after a single dash.
+func Uint8P(name, shorthand string, value uint8, usage string) *uint8 {
+	return CommandLine.Uint8P(name, shorthand, value, usage)
+}
