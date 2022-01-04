@@ -240,4 +240,103 @@ func (a *Assertions) Fail(failureMessage string, msgAndArgs ...interface{}) bool
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
 	}
-	return Fail(a.t, failureMessage, msgAndAr
+	return Fail(a.t, failureMessage, msgAndArgs...)
+}
+
+// FailNow fails test
+func (a *Assertions) FailNow(failureMessage string, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return FailNow(a.t, failureMessage, msgAndArgs...)
+}
+
+// FailNowf fails test
+func (a *Assertions) FailNowf(failureMessage string, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return FailNowf(a.t, failureMessage, msg, args...)
+}
+
+// Failf reports a failure through
+func (a *Assertions) Failf(failureMessage string, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Failf(a.t, failureMessage, msg, args...)
+}
+
+// False asserts that the specified value is false.
+//
+//    a.False(myBool)
+func (a *Assertions) False(value bool, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return False(a.t, value, msgAndArgs...)
+}
+
+// Falsef asserts that the specified value is false.
+//
+//    a.Falsef(myBool, "error message %s", "formatted")
+func (a *Assertions) Falsef(value bool, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Falsef(a.t, value, msg, args...)
+}
+
+// FileExists checks whether a file exists in the given path. It also fails if the path points to a directory or there is an error when trying to check the file.
+func (a *Assertions) FileExists(path string, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return FileExists(a.t, path, msgAndArgs...)
+}
+
+// FileExistsf checks whether a file exists in the given path. It also fails if the path points to a directory or there is an error when trying to check the file.
+func (a *Assertions) FileExistsf(path string, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return FileExistsf(a.t, path, msg, args...)
+}
+
+// HTTPBodyContains asserts that a specified handler returns a
+// body that contains a string.
+//
+//  a.HTTPBodyContains(myHandler, "GET", "www.google.com", nil, "I'm Feeling Lucky")
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assertions) HTTPBodyContains(handler http.HandlerFunc, method string, url string, values url.Values, str interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPBodyContains(a.t, handler, method, url, values, str, msgAndArgs...)
+}
+
+// HTTPBodyContainsf asserts that a specified handler returns a
+// body that contains a string.
+//
+//  a.HTTPBodyContainsf(myHandler, "GET", "www.google.com", nil, "I'm Feeling Lucky", "error message %s", "formatted")
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assertions) HTTPBodyContainsf(handler http.HandlerFunc, method string, url string, values url.Values, str interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPBodyContainsf(a.t, handler, method, url, values, str, msg, args...)
+}
+
+// HTTPBodyNotContains asserts that a specified handler returns a
+// body that does not contain a string.
+//
+//  a.HTTPBodyNotContains(myHandler, "GET", "www.google.com", nil, "I'm Feeling Lucky")
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assertions) HTTPBodyNotContains(handler http.HandlerFunc, method string, url string, values url.Values, str interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTP
