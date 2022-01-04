@@ -339,4 +339,85 @@ func (a *Assertions) HTTPBodyNotContains(handler http.HandlerFunc, method string
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
 	}
-	return HTTP
+	return HTTPBodyNotContains(a.t, handler, method, url, values, str, msgAndArgs...)
+}
+
+// HTTPBodyNotContainsf asserts that a specified handler returns a
+// body that does not contain a string.
+//
+//  a.HTTPBodyNotContainsf(myHandler, "GET", "www.google.com", nil, "I'm Feeling Lucky", "error message %s", "formatted")
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assertions) HTTPBodyNotContainsf(handler http.HandlerFunc, method string, url string, values url.Values, str interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPBodyNotContainsf(a.t, handler, method, url, values, str, msg, args...)
+}
+
+// HTTPError asserts that a specified handler returns an error status code.
+//
+//  a.HTTPError(myHandler, "POST", "/a/b/c", url.Values{"a": []string{"b", "c"}}
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assertions) HTTPError(handler http.HandlerFunc, method string, url string, values url.Values, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPError(a.t, handler, method, url, values, msgAndArgs...)
+}
+
+// HTTPErrorf asserts that a specified handler returns an error status code.
+//
+//  a.HTTPErrorf(myHandler, "POST", "/a/b/c", url.Values{"a": []string{"b", "c"}}
+//
+// Returns whether the assertion was successful (true, "error message %s", "formatted") or not (false).
+func (a *Assertions) HTTPErrorf(handler http.HandlerFunc, method string, url string, values url.Values, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPErrorf(a.t, handler, method, url, values, msg, args...)
+}
+
+// HTTPRedirect asserts that a specified handler returns a redirect status code.
+//
+//  a.HTTPRedirect(myHandler, "GET", "/a/b/c", url.Values{"a": []string{"b", "c"}}
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assertions) HTTPRedirect(handler http.HandlerFunc, method string, url string, values url.Values, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPRedirect(a.t, handler, method, url, values, msgAndArgs...)
+}
+
+// HTTPRedirectf asserts that a specified handler returns a redirect status code.
+//
+//  a.HTTPRedirectf(myHandler, "GET", "/a/b/c", url.Values{"a": []string{"b", "c"}}
+//
+// Returns whether the assertion was successful (true, "error message %s", "formatted") or not (false).
+func (a *Assertions) HTTPRedirectf(handler http.HandlerFunc, method string, url string, values url.Values, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPRedirectf(a.t, handler, method, url, values, msg, args...)
+}
+
+// HTTPSuccess asserts that a specified handler returns a success status code.
+//
+//  a.HTTPSuccess(myHandler, "POST", "http://www.google.com", nil)
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assertions) HTTPSuccess(handler http.HandlerFunc, method string, url string, values url.Values, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPSuccess(a.t, handler, method, url, values, msgAndArgs...)
+}
+
+// HTTPSuccessf asserts that a specified handler returns a success status code.
+//
+//  a.HTTPSuccessf(myHandler, "POST", "http://www.google.com", nil, "error message %s", "formatted")
+//
+// Returns whether the assertion was successful (true) or not (false).
+func (a *Assert
