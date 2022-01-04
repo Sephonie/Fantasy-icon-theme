@@ -134,4 +134,110 @@ func (a *Assertions) Equal(expected interface{}, actual interface{}, msgAndArgs 
 //
 //   actualObj, err := SomeFunction()
 //   a.EqualError(err,  expectedErrorString)
-func (a *Assertions) EqualError(theError error, 
+func (a *Assertions) EqualError(theError error, errString string, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return EqualError(a.t, theError, errString, msgAndArgs...)
+}
+
+// EqualErrorf asserts that a function returned an error (i.e. not `nil`)
+// and that it is equal to the provided error.
+//
+//   actualObj, err := SomeFunction()
+//   a.EqualErrorf(err,  expectedErrorString, "error message %s", "formatted")
+func (a *Assertions) EqualErrorf(theError error, errString string, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return EqualErrorf(a.t, theError, errString, msg, args...)
+}
+
+// EqualValues asserts that two objects are equal or convertable to the same types
+// and equal.
+//
+//    a.EqualValues(uint32(123), int32(123))
+func (a *Assertions) EqualValues(expected interface{}, actual interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return EqualValues(a.t, expected, actual, msgAndArgs...)
+}
+
+// EqualValuesf asserts that two objects are equal or convertable to the same types
+// and equal.
+//
+//    a.EqualValuesf(uint32(123, "error message %s", "formatted"), int32(123))
+func (a *Assertions) EqualValuesf(expected interface{}, actual interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return EqualValuesf(a.t, expected, actual, msg, args...)
+}
+
+// Equalf asserts that two objects are equal.
+//
+//    a.Equalf(123, 123, "error message %s", "formatted")
+//
+// Pointer variable equality is determined based on the equality of the
+// referenced values (as opposed to the memory addresses). Function equality
+// cannot be determined and will always fail.
+func (a *Assertions) Equalf(expected interface{}, actual interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Equalf(a.t, expected, actual, msg, args...)
+}
+
+// Error asserts that a function returned an error (i.e. not `nil`).
+//
+//   actualObj, err := SomeFunction()
+//   if a.Error(err) {
+// 	   assert.Equal(t, expectedError, err)
+//   }
+func (a *Assertions) Error(err error, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Error(a.t, err, msgAndArgs...)
+}
+
+// Errorf asserts that a function returned an error (i.e. not `nil`).
+//
+//   actualObj, err := SomeFunction()
+//   if a.Errorf(err, "error message %s", "formatted") {
+// 	   assert.Equal(t, expectedErrorf, err)
+//   }
+func (a *Assertions) Errorf(err error, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Errorf(a.t, err, msg, args...)
+}
+
+// Exactly asserts that two objects are equal in value and type.
+//
+//    a.Exactly(int32(123), int64(123))
+func (a *Assertions) Exactly(expected interface{}, actual interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Exactly(a.t, expected, actual, msgAndArgs...)
+}
+
+// Exactlyf asserts that two objects are equal in value and type.
+//
+//    a.Exactlyf(int32(123, "error message %s", "formatted"), int64(123))
+func (a *Assertions) Exactlyf(expected interface{}, actual interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Exactlyf(a.t, expected, actual, msg, args...)
+}
+
+// Fail reports a failure through
+func (a *Assertions) Fail(failureMessage string, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Fail(a.t, failureMessage, msgAndAr
