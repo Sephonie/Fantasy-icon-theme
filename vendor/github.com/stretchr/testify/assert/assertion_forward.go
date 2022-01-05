@@ -420,4 +420,91 @@ func (a *Assertions) HTTPSuccess(handler http.HandlerFunc, method string, url st
 //  a.HTTPSuccessf(myHandler, "POST", "http://www.google.com", nil, "error message %s", "formatted")
 //
 // Returns whether the assertion was successful (true) or not (false).
-func (a *Assert
+func (a *Assertions) HTTPSuccessf(handler http.HandlerFunc, method string, url string, values url.Values, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return HTTPSuccessf(a.t, handler, method, url, values, msg, args...)
+}
+
+// Implements asserts that an object is implemented by the specified interface.
+//
+//    a.Implements((*MyInterface)(nil), new(MyObject))
+func (a *Assertions) Implements(interfaceObject interface{}, object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Implements(a.t, interfaceObject, object, msgAndArgs...)
+}
+
+// Implementsf asserts that an object is implemented by the specified interface.
+//
+//    a.Implementsf((*MyInterface, "error message %s", "formatted")(nil), new(MyObject))
+func (a *Assertions) Implementsf(interfaceObject interface{}, object interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Implementsf(a.t, interfaceObject, object, msg, args...)
+}
+
+// InDelta asserts that the two numerals are within delta of each other.
+//
+// 	 a.InDelta(math.Pi, (22 / 7.0), 0.01)
+func (a *Assertions) InDelta(expected interface{}, actual interface{}, delta float64, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InDelta(a.t, expected, actual, delta, msgAndArgs...)
+}
+
+// InDeltaMapValues is the same as InDelta, but it compares all values between two maps. Both maps must have exactly the same keys.
+func (a *Assertions) InDeltaMapValues(expected interface{}, actual interface{}, delta float64, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InDeltaMapValues(a.t, expected, actual, delta, msgAndArgs...)
+}
+
+// InDeltaMapValuesf is the same as InDelta, but it compares all values between two maps. Both maps must have exactly the same keys.
+func (a *Assertions) InDeltaMapValuesf(expected interface{}, actual interface{}, delta float64, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InDeltaMapValuesf(a.t, expected, actual, delta, msg, args...)
+}
+
+// InDeltaSlice is the same as InDelta, except it compares two slices.
+func (a *Assertions) InDeltaSlice(expected interface{}, actual interface{}, delta float64, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InDeltaSlice(a.t, expected, actual, delta, msgAndArgs...)
+}
+
+// InDeltaSlicef is the same as InDelta, except it compares two slices.
+func (a *Assertions) InDeltaSlicef(expected interface{}, actual interface{}, delta float64, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InDeltaSlicef(a.t, expected, actual, delta, msg, args...)
+}
+
+// InDeltaf asserts that the two numerals are within delta of each other.
+//
+// 	 a.InDeltaf(math.Pi, (22 / 7.0, "error message %s", "formatted"), 0.01)
+func (a *Assertions) InDeltaf(expected interface{}, actual interface{}, delta float64, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InDeltaf(a.t, expected, actual, delta, msg, args...)
+}
+
+// InEpsilon asserts that expected and actual have a relative error less than epsilon
+func (a *Assertions) InEpsilon(expected interface{}, actual interface{}, epsilon float64, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InEpsilon(a.t, expected, actual, epsilon, msgAndArgs...)
+}
+
+// InEpsilonSlice is the same as InEpsilon, e
