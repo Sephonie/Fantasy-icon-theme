@@ -707,4 +707,110 @@ func (a *Assertions) NotEqual(expected interface{}, actual interface{}, msgAndAr
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses).
 func (a *Assertions) NotEqualf(expected interface{}, actual interface{}, msg string, args ...interface{}) bool {
-	if h, ok := a.t.(tHelper); ok
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotEqualf(a.t, expected, actual, msg, args...)
+}
+
+// NotNil asserts that the specified object is not nil.
+//
+//    a.NotNil(err)
+func (a *Assertions) NotNil(object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotNil(a.t, object, msgAndArgs...)
+}
+
+// NotNilf asserts that the specified object is not nil.
+//
+//    a.NotNilf(err, "error message %s", "formatted")
+func (a *Assertions) NotNilf(object interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotNilf(a.t, object, msg, args...)
+}
+
+// NotPanics asserts that the code inside the specified PanicTestFunc does NOT panic.
+//
+//   a.NotPanics(func(){ RemainCalm() })
+func (a *Assertions) NotPanics(f PanicTestFunc, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotPanics(a.t, f, msgAndArgs...)
+}
+
+// NotPanicsf asserts that the code inside the specified PanicTestFunc does NOT panic.
+//
+//   a.NotPanicsf(func(){ RemainCalm() }, "error message %s", "formatted")
+func (a *Assertions) NotPanicsf(f PanicTestFunc, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotPanicsf(a.t, f, msg, args...)
+}
+
+// NotRegexp asserts that a specified regexp does not match a string.
+//
+//  a.NotRegexp(regexp.MustCompile("starts"), "it's starting")
+//  a.NotRegexp("^start", "it's not starting")
+func (a *Assertions) NotRegexp(rx interface{}, str interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotRegexp(a.t, rx, str, msgAndArgs...)
+}
+
+// NotRegexpf asserts that a specified regexp does not match a string.
+//
+//  a.NotRegexpf(regexp.MustCompile("starts", "error message %s", "formatted"), "it's starting")
+//  a.NotRegexpf("^start", "it's not starting", "error message %s", "formatted")
+func (a *Assertions) NotRegexpf(rx interface{}, str interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotRegexpf(a.t, rx, str, msg, args...)
+}
+
+// NotSubset asserts that the specified list(array, slice...) contains not all
+// elements given in the specified subset(array, slice...).
+//
+//    a.NotSubset([1, 3, 4], [1, 2], "But [1, 3, 4] does not contain [1, 2]")
+func (a *Assertions) NotSubset(list interface{}, subset interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotSubset(a.t, list, subset, msgAndArgs...)
+}
+
+// NotSubsetf asserts that the specified list(array, slice...) contains not all
+// elements given in the specified subset(array, slice...).
+//
+//    a.NotSubsetf([1, 3, 4], [1, 2], "But [1, 3, 4] does not contain [1, 2]", "error message %s", "formatted")
+func (a *Assertions) NotSubsetf(list interface{}, subset interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotSubsetf(a.t, list, subset, msg, args...)
+}
+
+// NotZero asserts that i is not the zero value for its type.
+func (a *Assertions) NotZero(i interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotZero(a.t, i, msgAndArgs...)
+}
+
+// NotZerof asserts that i is not the zero value for its type.
+func (a *Assertions) NotZerof(i interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotZerof(a.t, i, msg, args...)
+}
+
+// Panics asserts that the code inside the s
