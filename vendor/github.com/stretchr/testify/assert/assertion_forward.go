@@ -507,4 +507,108 @@ func (a *Assertions) InEpsilon(expected interface{}, actual interface{}, epsilon
 	return InEpsilon(a.t, expected, actual, epsilon, msgAndArgs...)
 }
 
-// InEpsilonSlice is the same as InEpsilon, e
+// InEpsilonSlice is the same as InEpsilon, except it compares each value from two slices.
+func (a *Assertions) InEpsilonSlice(expected interface{}, actual interface{}, epsilon float64, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InEpsilonSlice(a.t, expected, actual, epsilon, msgAndArgs...)
+}
+
+// InEpsilonSlicef is the same as InEpsilon, except it compares each value from two slices.
+func (a *Assertions) InEpsilonSlicef(expected interface{}, actual interface{}, epsilon float64, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InEpsilonSlicef(a.t, expected, actual, epsilon, msg, args...)
+}
+
+// InEpsilonf asserts that expected and actual have a relative error less than epsilon
+func (a *Assertions) InEpsilonf(expected interface{}, actual interface{}, epsilon float64, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return InEpsilonf(a.t, expected, actual, epsilon, msg, args...)
+}
+
+// IsType asserts that the specified objects are of the same type.
+func (a *Assertions) IsType(expectedType interface{}, object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return IsType(a.t, expectedType, object, msgAndArgs...)
+}
+
+// IsTypef asserts that the specified objects are of the same type.
+func (a *Assertions) IsTypef(expectedType interface{}, object interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return IsTypef(a.t, expectedType, object, msg, args...)
+}
+
+// JSONEq asserts that two JSON strings are equivalent.
+//
+//  a.JSONEq(`{"hello": "world", "foo": "bar"}`, `{"foo": "bar", "hello": "world"}`)
+func (a *Assertions) JSONEq(expected string, actual string, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return JSONEq(a.t, expected, actual, msgAndArgs...)
+}
+
+// JSONEqf asserts that two JSON strings are equivalent.
+//
+//  a.JSONEqf(`{"hello": "world", "foo": "bar"}`, `{"foo": "bar", "hello": "world"}`, "error message %s", "formatted")
+func (a *Assertions) JSONEqf(expected string, actual string, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return JSONEqf(a.t, expected, actual, msg, args...)
+}
+
+// Len asserts that the specified object has specific length.
+// Len also fails if the object has a type that len() not accept.
+//
+//    a.Len(mySlice, 3)
+func (a *Assertions) Len(object interface{}, length int, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Len(a.t, object, length, msgAndArgs...)
+}
+
+// Lenf asserts that the specified object has specific length.
+// Lenf also fails if the object has a type that len() not accept.
+//
+//    a.Lenf(mySlice, 3, "error message %s", "formatted")
+func (a *Assertions) Lenf(object interface{}, length int, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Lenf(a.t, object, length, msg, args...)
+}
+
+// Nil asserts that the specified object is nil.
+//
+//    a.Nil(err)
+func (a *Assertions) Nil(object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Nil(a.t, object, msgAndArgs...)
+}
+
+// Nilf asserts that the specified object is nil.
+//
+//    a.Nilf(err, "error message %s", "formatted")
+func (a *Assertions) Nilf(object interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Nilf(a.t, object, msg, args...)
+}
+
+// NoError asserts that a function returned no error (i.e. `nil`).
+//
+//   actualObj, err := SomeFunction()
