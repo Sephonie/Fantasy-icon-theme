@@ -612,3 +612,99 @@ func (a *Assertions) Nilf(object interface{}, msg string, args ...interface{}) b
 // NoError asserts that a function returned no error (i.e. `nil`).
 //
 //   actualObj, err := SomeFunction()
+//   if a.NoError(err) {
+// 	   assert.Equal(t, expectedObj, actualObj)
+//   }
+func (a *Assertions) NoError(err error, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NoError(a.t, err, msgAndArgs...)
+}
+
+// NoErrorf asserts that a function returned no error (i.e. `nil`).
+//
+//   actualObj, err := SomeFunction()
+//   if a.NoErrorf(err, "error message %s", "formatted") {
+// 	   assert.Equal(t, expectedObj, actualObj)
+//   }
+func (a *Assertions) NoErrorf(err error, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NoErrorf(a.t, err, msg, args...)
+}
+
+// NotContains asserts that the specified string, list(array, slice...) or map does NOT contain the
+// specified substring or element.
+//
+//    a.NotContains("Hello World", "Earth")
+//    a.NotContains(["Hello", "World"], "Earth")
+//    a.NotContains({"Hello": "World"}, "Earth")
+func (a *Assertions) NotContains(s interface{}, contains interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotContains(a.t, s, contains, msgAndArgs...)
+}
+
+// NotContainsf asserts that the specified string, list(array, slice...) or map does NOT contain the
+// specified substring or element.
+//
+//    a.NotContainsf("Hello World", "Earth", "error message %s", "formatted")
+//    a.NotContainsf(["Hello", "World"], "Earth", "error message %s", "formatted")
+//    a.NotContainsf({"Hello": "World"}, "Earth", "error message %s", "formatted")
+func (a *Assertions) NotContainsf(s interface{}, contains interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotContainsf(a.t, s, contains, msg, args...)
+}
+
+// NotEmpty asserts that the specified object is NOT empty.  I.e. not nil, "", false, 0 or either
+// a slice or a channel with len == 0.
+//
+//  if a.NotEmpty(obj) {
+//    assert.Equal(t, "two", obj[1])
+//  }
+func (a *Assertions) NotEmpty(object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotEmpty(a.t, object, msgAndArgs...)
+}
+
+// NotEmptyf asserts that the specified object is NOT empty.  I.e. not nil, "", false, 0 or either
+// a slice or a channel with len == 0.
+//
+//  if a.NotEmptyf(obj, "error message %s", "formatted") {
+//    assert.Equal(t, "two", obj[1])
+//  }
+func (a *Assertions) NotEmptyf(object interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotEmptyf(a.t, object, msg, args...)
+}
+
+// NotEqual asserts that the specified values are NOT equal.
+//
+//    a.NotEqual(obj1, obj2)
+//
+// Pointer variable equality is determined based on the equality of the
+// referenced values (as opposed to the memory addresses).
+func (a *Assertions) NotEqual(expected interface{}, actual interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotEqual(a.t, expected, actual, msgAndArgs...)
+}
+
+// NotEqualf asserts that the specified values are NOT equal.
+//
+//    a.NotEqualf(obj1, obj2, "error message %s", "formatted")
+//
+// Pointer variable equality is determined based on the equality of the
+// referenced values (as opposed to the memory addresses).
+func (a *Assertions) NotEqualf(expected interface{}, actual interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok
