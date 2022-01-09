@@ -813,4 +813,103 @@ func (a *Assertions) NotZerof(i interface{}, msg string, args ...interface{}) bo
 	return NotZerof(a.t, i, msg, args...)
 }
 
-// Panics asserts that the code inside the s
+// Panics asserts that the code inside the specified PanicTestFunc panics.
+//
+//   a.Panics(func(){ GoCrazy() })
+func (a *Assertions) Panics(f PanicTestFunc, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Panics(a.t, f, msgAndArgs...)
+}
+
+// PanicsWithValue asserts that the code inside the specified PanicTestFunc panics, and that
+// the recovered panic value equals the expected panic value.
+//
+//   a.PanicsWithValue("crazy error", func(){ GoCrazy() })
+func (a *Assertions) PanicsWithValue(expected interface{}, f PanicTestFunc, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return PanicsWithValue(a.t, expected, f, msgAndArgs...)
+}
+
+// PanicsWithValuef asserts that the code inside the specified PanicTestFunc panics, and that
+// the recovered panic value equals the expected panic value.
+//
+//   a.PanicsWithValuef("crazy error", func(){ GoCrazy() }, "error message %s", "formatted")
+func (a *Assertions) PanicsWithValuef(expected interface{}, f PanicTestFunc, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return PanicsWithValuef(a.t, expected, f, msg, args...)
+}
+
+// Panicsf asserts that the code inside the specified PanicTestFunc panics.
+//
+//   a.Panicsf(func(){ GoCrazy() }, "error message %s", "formatted")
+func (a *Assertions) Panicsf(f PanicTestFunc, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Panicsf(a.t, f, msg, args...)
+}
+
+// Regexp asserts that a specified regexp matches a string.
+//
+//  a.Regexp(regexp.MustCompile("start"), "it's starting")
+//  a.Regexp("start...$", "it's not starting")
+func (a *Assertions) Regexp(rx interface{}, str interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Regexp(a.t, rx, str, msgAndArgs...)
+}
+
+// Regexpf asserts that a specified regexp matches a string.
+//
+//  a.Regexpf(regexp.MustCompile("start", "error message %s", "formatted"), "it's starting")
+//  a.Regexpf("start...$", "it's not starting", "error message %s", "formatted")
+func (a *Assertions) Regexpf(rx interface{}, str interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Regexpf(a.t, rx, str, msg, args...)
+}
+
+// Subset asserts that the specified list(array, slice...) contains all
+// elements given in the specified subset(array, slice...).
+//
+//    a.Subset([1, 2, 3], [1, 2], "But [1, 2, 3] does contain [1, 2]")
+func (a *Assertions) Subset(list interface{}, subset interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Subset(a.t, list, subset, msgAndArgs...)
+}
+
+// Subsetf asserts that the specified list(array, slice...) contains all
+// elements given in the specified subset(array, slice...).
+//
+//    a.Subsetf([1, 2, 3], [1, 2], "But [1, 2, 3] does contain [1, 2]", "error message %s", "formatted")
+func (a *Assertions) Subsetf(list interface{}, subset interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Subsetf(a.t, list, subset, msg, args...)
+}
+
+// True asserts that the specified value is true.
+//
+//    a.True(myBool)
+func (a *Assertions) True(value bool, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return True(a.t, value, msgAndArgs...)
+}
+
+// Truef asserts that the specified value is true.
+//
+//    a.Truef(myBool, "error message %s", "formatted")
+func (a *Assertions) Truef(value bo
