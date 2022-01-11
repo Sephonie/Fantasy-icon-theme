@@ -912,4 +912,45 @@ func (a *Assertions) True(value bool, msgAndArgs ...interface{}) bool {
 // Truef asserts that the specified value is true.
 //
 //    a.Truef(myBool, "error message %s", "formatted")
-func (a *Assertions) Truef(value bo
+func (a *Assertions) Truef(value bool, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Truef(a.t, value, msg, args...)
+}
+
+// WithinDuration asserts that the two times are within duration delta of each other.
+//
+//   a.WithinDuration(time.Now(), time.Now(), 10*time.Second)
+func (a *Assertions) WithinDuration(expected time.Time, actual time.Time, delta time.Duration, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return WithinDuration(a.t, expected, actual, delta, msgAndArgs...)
+}
+
+// WithinDurationf asserts that the two times are within duration delta of each other.
+//
+//   a.WithinDurationf(time.Now(), time.Now(), 10*time.Second, "error message %s", "formatted")
+func (a *Assertions) WithinDurationf(expected time.Time, actual time.Time, delta time.Duration, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return WithinDurationf(a.t, expected, actual, delta, msg, args...)
+}
+
+// Zero asserts that i is the zero value for its type.
+func (a *Assertions) Zero(i interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Zero(a.t, i, msgAndArgs...)
+}
+
+// Zerof asserts that i is the zero value for its type.
+func (a *Assertions) Zerof(i interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return Zerof(a.t, i, msg, args...)
+}
