@@ -195,4 +195,121 @@ func indentMessageLines(message string, longestLabelLen int) string {
 	outBuf := new(bytes.Buffer)
 
 	for i, scanner := 0, bufio.NewScanner(strings.NewReader(message)); scanner.Scan(); i++ {
-		// no need to align first line because it starts at the c
+		// no need to align first line because it starts at the correct location (after the label)
+		if i != 0 {
+			// append alignLen+1 spaces to align with "{{longestLabel}}:" before adding tab
+			outBuf.WriteString("\n\t" + strings.Repeat(" ", longestLabelLen+1) + "\t")
+		}
+		outBuf.WriteString(scanner.Text())
+	}
+
+	return outBuf.String()
+}
+
+type failNower interface {
+	FailNow()
+}
+
+// FailNow fails test
+func FailNow(t TestingT, failureMessage string, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	Fail(t, failureMessage, msgAndArgs...)
+
+	// We cannot extend TestingT with FailNow() and
+	// maintain backwards compatibility, so we fallback
+	// to panicking when FailNow is not available in
+	// TestingT.
+	// See issue #263
+
+	if t, ok := t.(failNower); ok {
+		t.FailNow()
+	} else {
+		panic("test failed and t is missing `FailNow()`")
+	}
+	return false
+}
+
+// Fail reports a failure through
+func Fail(t TestingT, failureMessage string, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	content := []labeledContent{
+		{"Error Trace", strings.Join(CallerInfo(), "\n\t\t\t")},
+		{"Error", failureMessage},
+	}
+
+	// Add test name if the Go version supports it
+	if n, ok := t.(interface {
+		Name() string
+	}); ok {
+		content = append(content, labeledContent{"Test", n.Name()})
+	}
+
+	message := messageFromMsgAndArgs(msgAndArgs...)
+	if len(message) > 0 {
+		content = append(content, labeledContent{"Messages", message})
+	}
+
+	t.Errorf("\n%s", ""+labeledOutput(content...))
+
+	return false
+}
+
+type labeledContent struct {
+	label   string
+	content string
+}
+
+// labeledOutput returns a string consisting of the provided labeledContent. Each labeled output is appended in the following manner:
+//
+//   \t{{label}}:{{align_spaces}}\t{{content}}\n
+//
+// The initial carriage return is required to undo/erase any padding added by testing.T.Errorf. The "\t{{label}}:" is for the label.
+// If a label is shorter than the longest label provided, padding spaces are added to make all the labels match in length. Once this
+// alignment is achieved, "\t{{content}}\n" is added for the output.
+//
+// If the content of the labeledOutput contains line breaks, the subsequent lines are aligned so that they start at the same location as the first line.
+func labeledOutput(content ...labeledContent) string {
+	longestLabel := 0
+	for _, v := range content {
+		if len(v.label) > longestLabel {
+			longestLabel = len(v.label)
+		}
+	}
+	var output string
+	for _, v := range content {
+		output += "\t" + v.label + ":" + strings.Repeat(" ", longestLabel-len(v.label)) + "\t" + indentMessageLines(v.content, longestLabel) + "\n"
+	}
+	return output
+}
+
+// Implements asserts that an object is implemented by the specified interface.
+//
+//    assert.Implements(t, (*MyInterface)(nil), new(MyObject))
+func Implements(t TestingT, interfaceObject interface{}, object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	interfaceType := reflect.TypeOf(interfaceObject).Elem()
+
+	if object == nil {
+		return Fail(t, fmt.Sprintf("Cannot check if nil implements %v", interfaceType), msgAndArgs...)
+	}
+	if !reflect.TypeOf(object).Implements(interfaceType) {
+		return Fail(t, fmt.Sprintf("%T must implement %v", object, interfaceType), msgAndArgs...)
+	}
+
+	return true
+}
+
+// IsType asserts that the specified objects are of the same type.
+func IsType(t TestingT, expectedType interface{}, object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+
+	if !ObjectsAreEqual(reflect.TypeOf(object), reflect.TypeOf(expectedType)) {
+		re
