@@ -581,4 +581,129 @@ func False(t TestingT, value bool, msgAndArgs ...interface{}) bool {
 //
 //    assert.NotEqual(t, obj1, obj2)
 //
-// Pointer variable equality is de
+// Pointer variable equality is determined based on the equality of the
+// referenced values (as opposed to the memory addresses).
+func NotEqual(t TestingT, expected, actual interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if err := validateEqualArgs(expected, actual); err != nil {
+		return Fail(t, fmt.Sprintf("Invalid operation: %#v != %#v (%s)",
+			expected, actual, err), msgAndArgs...)
+	}
+
+	if ObjectsAreEqual(expected, actual) {
+		return Fail(t, fmt.Sprintf("Should not be: %#v\n", actual), msgAndArgs...)
+	}
+
+	return true
+
+}
+
+// containsElement try loop over the list check if the list includes the element.
+// return (false, false) if impossible.
+// return (true, false) if element was not found.
+// return (true, true) if element was found.
+func includeElement(list interface{}, element interface{}) (ok, found bool) {
+
+	listValue := reflect.ValueOf(list)
+	elementValue := reflect.ValueOf(element)
+	defer func() {
+		if e := recover(); e != nil {
+			ok = false
+			found = false
+		}
+	}()
+
+	if reflect.TypeOf(list).Kind() == reflect.String {
+		return true, strings.Contains(listValue.String(), elementValue.String())
+	}
+
+	if reflect.TypeOf(list).Kind() == reflect.Map {
+		mapKeys := listValue.MapKeys()
+		for i := 0; i < len(mapKeys); i++ {
+			if ObjectsAreEqual(mapKeys[i].Interface(), element) {
+				return true, true
+			}
+		}
+		return true, false
+	}
+
+	for i := 0; i < listValue.Len(); i++ {
+		if ObjectsAreEqual(listValue.Index(i).Interface(), element) {
+			return true, true
+		}
+	}
+	return true, false
+
+}
+
+// Contains asserts that the specified string, list(array, slice...) or map contains the
+// specified substring or element.
+//
+//    assert.Contains(t, "Hello World", "World")
+//    assert.Contains(t, ["Hello", "World"], "World")
+//    assert.Contains(t, {"Hello": "World"}, "Hello")
+func Contains(t TestingT, s, contains interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+
+	ok, found := includeElement(s, contains)
+	if !ok {
+		return Fail(t, fmt.Sprintf("\"%s\" could not be applied builtin len()", s), msgAndArgs...)
+	}
+	if !found {
+		return Fail(t, fmt.Sprintf("\"%s\" does not contain \"%s\"", s, contains), msgAndArgs...)
+	}
+
+	return true
+
+}
+
+// NotContains asserts that the specified string, list(array, slice...) or map does NOT contain the
+// specified substring or element.
+//
+//    assert.NotContains(t, "Hello World", "Earth")
+//    assert.NotContains(t, ["Hello", "World"], "Earth")
+//    assert.NotContains(t, {"Hello": "World"}, "Earth")
+func NotContains(t TestingT, s, contains interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+
+	ok, found := includeElement(s, contains)
+	if !ok {
+		return Fail(t, fmt.Sprintf("\"%s\" could not be applied builtin len()", s), msgAndArgs...)
+	}
+	if found {
+		return Fail(t, fmt.Sprintf("\"%s\" should not contain \"%s\"", s, contains), msgAndArgs...)
+	}
+
+	return true
+
+}
+
+// Subset asserts that the specified list(array, slice...) contains all
+// elements given in the specified subset(array, slice...).
+//
+//    assert.Subset(t, [1, 2, 3], [1, 2], "But [1, 2, 3] does contain [1, 2]")
+func Subset(t TestingT, list, subset interface{}, msgAndArgs ...interface{}) (ok bool) {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if subset == nil {
+		return true // we consider nil to be equal to the nil set
+	}
+
+	subsetValue := reflect.ValueOf(subset)
+	defer func() {
+		if e := recover(); e != nil {
+			ok = false
+		}
+	}()
+
+	listKind := reflect.TypeOf(list).Kind()
+	subsetKind := reflect.TypeOf(subset).Kind()
+
+	if listKind != reflect.Array && listKind != reflect.
