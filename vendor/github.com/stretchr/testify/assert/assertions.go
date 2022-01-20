@@ -706,4 +706,115 @@ func Subset(t TestingT, list, subset interface{}, msgAndArgs ...interface{}) (ok
 	listKind := reflect.TypeOf(list).Kind()
 	subsetKind := reflect.TypeOf(subset).Kind()
 
-	if listKind != reflect.Array && listKind != reflect.
+	if listKind != reflect.Array && listKind != reflect.Slice {
+		return Fail(t, fmt.Sprintf("%q has an unsupported type %s", list, listKind), msgAndArgs...)
+	}
+
+	if subsetKind != reflect.Array && subsetKind != reflect.Slice {
+		return Fail(t, fmt.Sprintf("%q has an unsupported type %s", subset, subsetKind), msgAndArgs...)
+	}
+
+	for i := 0; i < subsetValue.Len(); i++ {
+		element := subsetValue.Index(i).Interface()
+		ok, found := includeElement(list, element)
+		if !ok {
+			return Fail(t, fmt.Sprintf("\"%s\" could not be applied builtin len()", list), msgAndArgs...)
+		}
+		if !found {
+			return Fail(t, fmt.Sprintf("\"%s\" does not contain \"%s\"", list, element), msgAndArgs...)
+		}
+	}
+
+	return true
+}
+
+// NotSubset asserts that the specified list(array, slice...) contains not all
+// elements given in the specified subset(array, slice...).
+//
+//    assert.NotSubset(t, [1, 3, 4], [1, 2], "But [1, 3, 4] does not contain [1, 2]")
+func NotSubset(t TestingT, list, subset interface{}, msgAndArgs ...interface{}) (ok bool) {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if subset == nil {
+		return Fail(t, fmt.Sprintf("nil is the empty set which is a subset of every set"), msgAndArgs...)
+	}
+
+	subsetValue := reflect.ValueOf(subset)
+	defer func() {
+		if e := recover(); e != nil {
+			ok = false
+		}
+	}()
+
+	listKind := reflect.TypeOf(list).Kind()
+	subsetKind := reflect.TypeOf(subset).Kind()
+
+	if listKind != reflect.Array && listKind != reflect.Slice {
+		return Fail(t, fmt.Sprintf("%q has an unsupported type %s", list, listKind), msgAndArgs...)
+	}
+
+	if subsetKind != reflect.Array && subsetKind != reflect.Slice {
+		return Fail(t, fmt.Sprintf("%q has an unsupported type %s", subset, subsetKind), msgAndArgs...)
+	}
+
+	for i := 0; i < subsetValue.Len(); i++ {
+		element := subsetValue.Index(i).Interface()
+		ok, found := includeElement(list, element)
+		if !ok {
+			return Fail(t, fmt.Sprintf("\"%s\" could not be applied builtin len()", list), msgAndArgs...)
+		}
+		if !found {
+			return true
+		}
+	}
+
+	return Fail(t, fmt.Sprintf("%q is a subset of %q", subset, list), msgAndArgs...)
+}
+
+// ElementsMatch asserts that the specified listA(array, slice...) is equal to specified
+// listB(array, slice...) ignoring the order of the elements. If there are duplicate elements,
+// the number of appearances of each of them in both lists should match.
+//
+// assert.ElementsMatch(t, [1, 3, 2, 3], [1, 3, 3, 2])
+func ElementsMatch(t TestingT, listA, listB interface{}, msgAndArgs ...interface{}) (ok bool) {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if isEmpty(listA) && isEmpty(listB) {
+		return true
+	}
+
+	aKind := reflect.TypeOf(listA).Kind()
+	bKind := reflect.TypeOf(listB).Kind()
+
+	if aKind != reflect.Array && aKind != reflect.Slice {
+		return Fail(t, fmt.Sprintf("%q has an unsupported type %s", listA, aKind), msgAndArgs...)
+	}
+
+	if bKind != reflect.Array && bKind != reflect.Slice {
+		return Fail(t, fmt.Sprintf("%q has an unsupported type %s", listB, bKind), msgAndArgs...)
+	}
+
+	aValue := reflect.ValueOf(listA)
+	bValue := reflect.ValueOf(listB)
+
+	aLen := aValue.Len()
+	bLen := bValue.Len()
+
+	if aLen != bLen {
+		return Fail(t, fmt.Sprintf("lengths don't match: %d != %d", aLen, bLen), msgAndArgs...)
+	}
+
+	// Mark indexes in bValue that we already used
+	visited := make([]bool, bLen)
+	for i := 0; i < aLen; i++ {
+		element := aValue.Index(i).Interface()
+		found := false
+		for j := 0; j < bLen; j++ {
+			if visited[j] {
+				continue
+			}
+			if ObjectsAreEqual(bValue.Index(j).Interface(), element) {
+				visited[j] = true
+			
