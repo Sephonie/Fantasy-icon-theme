@@ -949,4 +949,133 @@ func toFloat(x interface{}) (float64, bool) {
 	case int:
 		xf = float64(xn)
 	case int8:
-		xf = float6
+		xf = float64(xn)
+	case int16:
+		xf = float64(xn)
+	case int32:
+		xf = float64(xn)
+	case int64:
+		xf = float64(xn)
+	case float32:
+		xf = float64(xn)
+	case float64:
+		xf = float64(xn)
+	case time.Duration:
+		xf = float64(xn)
+	default:
+		xok = false
+	}
+
+	return xf, xok
+}
+
+// InDelta asserts that the two numerals are within delta of each other.
+//
+// 	 assert.InDelta(t, math.Pi, (22 / 7.0), 0.01)
+func InDelta(t TestingT, expected, actual interface{}, delta float64, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+
+	af, aok := toFloat(expected)
+	bf, bok := toFloat(actual)
+
+	if !aok || !bok {
+		return Fail(t, fmt.Sprintf("Parameters must be numerical"), msgAndArgs...)
+	}
+
+	if math.IsNaN(af) {
+		return Fail(t, fmt.Sprintf("Expected must not be NaN"), msgAndArgs...)
+	}
+
+	if math.IsNaN(bf) {
+		return Fail(t, fmt.Sprintf("Expected %v with delta %v, but was NaN", expected, delta), msgAndArgs...)
+	}
+
+	dt := af - bf
+	if dt < -delta || dt > delta {
+		return Fail(t, fmt.Sprintf("Max difference between %v and %v allowed is %v, but difference was %v", expected, actual, delta, dt), msgAndArgs...)
+	}
+
+	return true
+}
+
+// InDeltaSlice is the same as InDelta, except it compares two slices.
+func InDeltaSlice(t TestingT, expected, actual interface{}, delta float64, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if expected == nil || actual == nil ||
+		reflect.TypeOf(actual).Kind() != reflect.Slice ||
+		reflect.TypeOf(expected).Kind() != reflect.Slice {
+		return Fail(t, fmt.Sprintf("Parameters must be slice"), msgAndArgs...)
+	}
+
+	actualSlice := reflect.ValueOf(actual)
+	expectedSlice := reflect.ValueOf(expected)
+
+	for i := 0; i < actualSlice.Len(); i++ {
+		result := InDelta(t, actualSlice.Index(i).Interface(), expectedSlice.Index(i).Interface(), delta, msgAndArgs...)
+		if !result {
+			return result
+		}
+	}
+
+	return true
+}
+
+// InDeltaMapValues is the same as InDelta, but it compares all values between two maps. Both maps must have exactly the same keys.
+func InDeltaMapValues(t TestingT, expected, actual interface{}, delta float64, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if expected == nil || actual == nil ||
+		reflect.TypeOf(actual).Kind() != reflect.Map ||
+		reflect.TypeOf(expected).Kind() != reflect.Map {
+		return Fail(t, "Arguments must be maps", msgAndArgs...)
+	}
+
+	expectedMap := reflect.ValueOf(expected)
+	actualMap := reflect.ValueOf(actual)
+
+	if expectedMap.Len() != actualMap.Len() {
+		return Fail(t, "Arguments must have the same number of keys", msgAndArgs...)
+	}
+
+	for _, k := range expectedMap.MapKeys() {
+		ev := expectedMap.MapIndex(k)
+		av := actualMap.MapIndex(k)
+
+		if !ev.IsValid() {
+			return Fail(t, fmt.Sprintf("missing key %q in expected map", k), msgAndArgs...)
+		}
+
+		if !av.IsValid() {
+			return Fail(t, fmt.Sprintf("missing key %q in actual map", k), msgAndArgs...)
+		}
+
+		if !InDelta(
+			t,
+			ev.Interface(),
+			av.Interface(),
+			delta,
+			msgAndArgs...,
+		) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func calcRelativeError(expected, actual interface{}) (float64, error) {
+	af, aok := toFloat(expected)
+	if !aok {
+		return 0, fmt.Errorf("expected value %q cannot be converted to float", expected)
+	}
+	if af == 0 {
+		return 0, fmt.Errorf("expected value must have a value other than zero to calculate the relative error")
+	}
+	bf, bok := toFloat(actual)
+	if !bok {
+		return 0, fmt.Errorf("actual value %q cannot be converted to float", actual
