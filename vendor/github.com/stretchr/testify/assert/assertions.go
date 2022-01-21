@@ -1078,4 +1078,131 @@ func calcRelativeError(expected, actual interface{}) (float64, error) {
 	}
 	bf, bok := toFloat(actual)
 	if !bok {
-		return 0, fmt.Errorf("actual value %q cannot be converted to float", actual
+		return 0, fmt.Errorf("actual value %q cannot be converted to float", actual)
+	}
+
+	return math.Abs(af-bf) / math.Abs(af), nil
+}
+
+// InEpsilon asserts that expected and actual have a relative error less than epsilon
+func InEpsilon(t TestingT, expected, actual interface{}, epsilon float64, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	actualEpsilon, err := calcRelativeError(expected, actual)
+	if err != nil {
+		return Fail(t, err.Error(), msgAndArgs...)
+	}
+	if actualEpsilon > epsilon {
+		return Fail(t, fmt.Sprintf("Relative error is too high: %#v (expected)\n"+
+			"        < %#v (actual)", epsilon, actualEpsilon), msgAndArgs...)
+	}
+
+	return true
+}
+
+// InEpsilonSlice is the same as InEpsilon, except it compares each value from two slices.
+func InEpsilonSlice(t TestingT, expected, actual interface{}, epsilon float64, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if expected == nil || actual == nil ||
+		reflect.TypeOf(actual).Kind() != reflect.Slice ||
+		reflect.TypeOf(expected).Kind() != reflect.Slice {
+		return Fail(t, fmt.Sprintf("Parameters must be slice"), msgAndArgs...)
+	}
+
+	actualSlice := reflect.ValueOf(actual)
+	expectedSlice := reflect.ValueOf(expected)
+
+	for i := 0; i < actualSlice.Len(); i++ {
+		result := InEpsilon(t, actualSlice.Index(i).Interface(), expectedSlice.Index(i).Interface(), epsilon)
+		if !result {
+			return result
+		}
+	}
+
+	return true
+}
+
+/*
+	Errors
+*/
+
+// NoError asserts that a function returned no error (i.e. `nil`).
+//
+//   actualObj, err := SomeFunction()
+//   if assert.NoError(t, err) {
+//	   assert.Equal(t, expectedObj, actualObj)
+//   }
+func NoError(t TestingT, err error, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if err != nil {
+		return Fail(t, fmt.Sprintf("Received unexpected error:\n%+v", err), msgAndArgs...)
+	}
+
+	return true
+}
+
+// Error asserts that a function returned an error (i.e. not `nil`).
+//
+//   actualObj, err := SomeFunction()
+//   if assert.Error(t, err) {
+//	   assert.Equal(t, expectedError, err)
+//   }
+func Error(t TestingT, err error, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+
+	if err == nil {
+		return Fail(t, "An error is expected but got nil.", msgAndArgs...)
+	}
+
+	return true
+}
+
+// EqualError asserts that a function returned an error (i.e. not `nil`)
+// and that it is equal to the provided error.
+//
+//   actualObj, err := SomeFunction()
+//   assert.EqualError(t, err,  expectedErrorString)
+func EqualError(t TestingT, theError error, errString string, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	if !Error(t, theError, msgAndArgs...) {
+		return false
+	}
+	expected := errString
+	actual := theError.Error()
+	// don't need to use deep equals here, we know they are both strings
+	if expected != actual {
+		return Fail(t, fmt.Sprintf("Error message not equal:\n"+
+			"expected: %q\n"+
+			"actual  : %q", expected, actual), msgAndArgs...)
+	}
+	return true
+}
+
+// matchRegexp return true if a specified regexp matches a string.
+func matchRegexp(rx interface{}, str interface{}) bool {
+
+	var r *regexp.Regexp
+	if rr, ok := rx.(*regexp.Regexp); ok {
+		r = rr
+	} else {
+		r = regexp.MustCompile(fmt.Sprint(rx))
+	}
+
+	return (r.FindStringIndex(fmt.Sprint(str)) != nil)
+
+}
+
+// Regexp asserts that a specified regexp matches a string.
+//
+//  assert.Regexp(t, regexp.MustCompile("start"), "it's starting")
+//  assert.Regexp(t, "start...$", "it's not starting")
+func Regexp(t TestingT, rx interface{}, str interface{}, msgAndArgs ...interfa
