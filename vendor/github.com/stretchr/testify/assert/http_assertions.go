@@ -98,4 +98,46 @@ func HTTPBody(handler http.HandlerFunc, method, url string, values url.Values) s
 	if err != nil {
 		return ""
 	}
-	handler(w,
+	handler(w, req)
+	return w.Body.String()
+}
+
+// HTTPBodyContains asserts that a specified handler returns a
+// body that contains a string.
+//
+//  assert.HTTPBodyContains(t, myHandler, "GET", "www.google.com", nil, "I'm Feeling Lucky")
+//
+// Returns whether the assertion was successful (true) or not (false).
+func HTTPBodyContains(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, str interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	body := HTTPBody(handler, method, url, values)
+
+	contains := strings.Contains(body, fmt.Sprint(str))
+	if !contains {
+		Fail(t, fmt.Sprintf("Expected response body for \"%s\" to contain \"%s\" but found \"%s\"", url+"?"+values.Encode(), str, body))
+	}
+
+	return contains
+}
+
+// HTTPBodyNotContains asserts that a specified handler returns a
+// body that does not contain a string.
+//
+//  assert.HTTPBodyNotContains(t, myHandler, "GET", "www.google.com", nil, "I'm Feeling Lucky")
+//
+// Returns whether the assertion was successful (true) or not (false).
+func HTTPBodyNotContains(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, str interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	body := HTTPBody(handler, method, url, values)
+
+	contains := strings.Contains(body, fmt.Sprint(str))
+	if contains {
+		Fail(t, fmt.Sprintf("Expected response body for \"%s\" to NOT contain \"%s\" but found \"%s\"", url+"?"+values.Encode(), str, body))
+	}
+
+	return !contains
+}
