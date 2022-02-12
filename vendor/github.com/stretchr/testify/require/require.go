@@ -780,3 +780,449 @@ func Nilf(t TestingT, object interface{}, msg string, args ...interface{}) {
 		return
 	}
 	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NoError asserts that a function returned no error (i.e. `nil`).
+//
+//   actualObj, err := SomeFunction()
+//   if assert.NoError(t, err) {
+// 	   assert.Equal(t, expectedObj, actualObj)
+//   }
+func NoError(t TestingT, err error, msgAndArgs ...interface{}) {
+	if assert.NoError(t, err, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NoErrorf asserts that a function returned no error (i.e. `nil`).
+//
+//   actualObj, err := SomeFunction()
+//   if assert.NoErrorf(t, err, "error message %s", "formatted") {
+// 	   assert.Equal(t, expectedObj, actualObj)
+//   }
+func NoErrorf(t TestingT, err error, msg string, args ...interface{}) {
+	if assert.NoErrorf(t, err, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotContains asserts that the specified string, list(array, slice...) or map does NOT contain the
+// specified substring or element.
+//
+//    assert.NotContains(t, "Hello World", "Earth")
+//    assert.NotContains(t, ["Hello", "World"], "Earth")
+//    assert.NotContains(t, {"Hello": "World"}, "Earth")
+func NotContains(t TestingT, s interface{}, contains interface{}, msgAndArgs ...interface{}) {
+	if assert.NotContains(t, s, contains, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotContainsf asserts that the specified string, list(array, slice...) or map does NOT contain the
+// specified substring or element.
+//
+//    assert.NotContainsf(t, "Hello World", "Earth", "error message %s", "formatted")
+//    assert.NotContainsf(t, ["Hello", "World"], "Earth", "error message %s", "formatted")
+//    assert.NotContainsf(t, {"Hello": "World"}, "Earth", "error message %s", "formatted")
+func NotContainsf(t TestingT, s interface{}, contains interface{}, msg string, args ...interface{}) {
+	if assert.NotContainsf(t, s, contains, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotEmpty asserts that the specified object is NOT empty.  I.e. not nil, "", false, 0 or either
+// a slice or a channel with len == 0.
+//
+//  if assert.NotEmpty(t, obj) {
+//    assert.Equal(t, "two", obj[1])
+//  }
+func NotEmpty(t TestingT, object interface{}, msgAndArgs ...interface{}) {
+	if assert.NotEmpty(t, object, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotEmptyf asserts that the specified object is NOT empty.  I.e. not nil, "", false, 0 or either
+// a slice or a channel with len == 0.
+//
+//  if assert.NotEmptyf(t, obj, "error message %s", "formatted") {
+//    assert.Equal(t, "two", obj[1])
+//  }
+func NotEmptyf(t TestingT, object interface{}, msg string, args ...interface{}) {
+	if assert.NotEmptyf(t, object, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotEqual asserts that the specified values are NOT equal.
+//
+//    assert.NotEqual(t, obj1, obj2)
+//
+// Pointer variable equality is determined based on the equality of the
+// referenced values (as opposed to the memory addresses).
+func NotEqual(t TestingT, expected interface{}, actual interface{}, msgAndArgs ...interface{}) {
+	if assert.NotEqual(t, expected, actual, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotEqualf asserts that the specified values are NOT equal.
+//
+//    assert.NotEqualf(t, obj1, obj2, "error message %s", "formatted")
+//
+// Pointer variable equality is determined based on the equality of the
+// referenced values (as opposed to the memory addresses).
+func NotEqualf(t TestingT, expected interface{}, actual interface{}, msg string, args ...interface{}) {
+	if assert.NotEqualf(t, expected, actual, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotNil asserts that the specified object is not nil.
+//
+//    assert.NotNil(t, err)
+func NotNil(t TestingT, object interface{}, msgAndArgs ...interface{}) {
+	if assert.NotNil(t, object, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotNilf asserts that the specified object is not nil.
+//
+//    assert.NotNilf(t, err, "error message %s", "formatted")
+func NotNilf(t TestingT, object interface{}, msg string, args ...interface{}) {
+	if assert.NotNilf(t, object, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotPanics asserts that the code inside the specified PanicTestFunc does NOT panic.
+//
+//   assert.NotPanics(t, func(){ RemainCalm() })
+func NotPanics(t TestingT, f assert.PanicTestFunc, msgAndArgs ...interface{}) {
+	if assert.NotPanics(t, f, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotPanicsf asserts that the code inside the specified PanicTestFunc does NOT panic.
+//
+//   assert.NotPanicsf(t, func(){ RemainCalm() }, "error message %s", "formatted")
+func NotPanicsf(t TestingT, f assert.PanicTestFunc, msg string, args ...interface{}) {
+	if assert.NotPanicsf(t, f, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotRegexp asserts that a specified regexp does not match a string.
+//
+//  assert.NotRegexp(t, regexp.MustCompile("starts"), "it's starting")
+//  assert.NotRegexp(t, "^start", "it's not starting")
+func NotRegexp(t TestingT, rx interface{}, str interface{}, msgAndArgs ...interface{}) {
+	if assert.NotRegexp(t, rx, str, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotRegexpf asserts that a specified regexp does not match a string.
+//
+//  assert.NotRegexpf(t, regexp.MustCompile("starts", "error message %s", "formatted"), "it's starting")
+//  assert.NotRegexpf(t, "^start", "it's not starting", "error message %s", "formatted")
+func NotRegexpf(t TestingT, rx interface{}, str interface{}, msg string, args ...interface{}) {
+	if assert.NotRegexpf(t, rx, str, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotSubset asserts that the specified list(array, slice...) contains not all
+// elements given in the specified subset(array, slice...).
+//
+//    assert.NotSubset(t, [1, 3, 4], [1, 2], "But [1, 3, 4] does not contain [1, 2]")
+func NotSubset(t TestingT, list interface{}, subset interface{}, msgAndArgs ...interface{}) {
+	if assert.NotSubset(t, list, subset, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotSubsetf asserts that the specified list(array, slice...) contains not all
+// elements given in the specified subset(array, slice...).
+//
+//    assert.NotSubsetf(t, [1, 3, 4], [1, 2], "But [1, 3, 4] does not contain [1, 2]", "error message %s", "formatted")
+func NotSubsetf(t TestingT, list interface{}, subset interface{}, msg string, args ...interface{}) {
+	if assert.NotSubsetf(t, list, subset, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotZero asserts that i is not the zero value for its type.
+func NotZero(t TestingT, i interface{}, msgAndArgs ...interface{}) {
+	if assert.NotZero(t, i, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// NotZerof asserts that i is not the zero value for its type.
+func NotZerof(t TestingT, i interface{}, msg string, args ...interface{}) {
+	if assert.NotZerof(t, i, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Panics asserts that the code inside the specified PanicTestFunc panics.
+//
+//   assert.Panics(t, func(){ GoCrazy() })
+func Panics(t TestingT, f assert.PanicTestFunc, msgAndArgs ...interface{}) {
+	if assert.Panics(t, f, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// PanicsWithValue asserts that the code inside the specified PanicTestFunc panics, and that
+// the recovered panic value equals the expected panic value.
+//
+//   assert.PanicsWithValue(t, "crazy error", func(){ GoCrazy() })
+func PanicsWithValue(t TestingT, expected interface{}, f assert.PanicTestFunc, msgAndArgs ...interface{}) {
+	if assert.PanicsWithValue(t, expected, f, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// PanicsWithValuef asserts that the code inside the specified PanicTestFunc panics, and that
+// the recovered panic value equals the expected panic value.
+//
+//   assert.PanicsWithValuef(t, "crazy error", func(){ GoCrazy() }, "error message %s", "formatted")
+func PanicsWithValuef(t TestingT, expected interface{}, f assert.PanicTestFunc, msg string, args ...interface{}) {
+	if assert.PanicsWithValuef(t, expected, f, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Panicsf asserts that the code inside the specified PanicTestFunc panics.
+//
+//   assert.Panicsf(t, func(){ GoCrazy() }, "error message %s", "formatted")
+func Panicsf(t TestingT, f assert.PanicTestFunc, msg string, args ...interface{}) {
+	if assert.Panicsf(t, f, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Regexp asserts that a specified regexp matches a string.
+//
+//  assert.Regexp(t, regexp.MustCompile("start"), "it's starting")
+//  assert.Regexp(t, "start...$", "it's not starting")
+func Regexp(t TestingT, rx interface{}, str interface{}, msgAndArgs ...interface{}) {
+	if assert.Regexp(t, rx, str, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Regexpf asserts that a specified regexp matches a string.
+//
+//  assert.Regexpf(t, regexp.MustCompile("start", "error message %s", "formatted"), "it's starting")
+//  assert.Regexpf(t, "start...$", "it's not starting", "error message %s", "formatted")
+func Regexpf(t TestingT, rx interface{}, str interface{}, msg string, args ...interface{}) {
+	if assert.Regexpf(t, rx, str, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Subset asserts that the specified list(array, slice...) contains all
+// elements given in the specified subset(array, slice...).
+//
+//    assert.Subset(t, [1, 2, 3], [1, 2], "But [1, 2, 3] does contain [1, 2]")
+func Subset(t TestingT, list interface{}, subset interface{}, msgAndArgs ...interface{}) {
+	if assert.Subset(t, list, subset, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Subsetf asserts that the specified list(array, slice...) contains all
+// elements given in the specified subset(array, slice...).
+//
+//    assert.Subsetf(t, [1, 2, 3], [1, 2], "But [1, 2, 3] does contain [1, 2]", "error message %s", "formatted")
+func Subsetf(t TestingT, list interface{}, subset interface{}, msg string, args ...interface{}) {
+	if assert.Subsetf(t, list, subset, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// True asserts that the specified value is true.
+//
+//    assert.True(t, myBool)
+func True(t TestingT, value bool, msgAndArgs ...interface{}) {
+	if assert.True(t, value, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Truef asserts that the specified value is true.
+//
+//    assert.Truef(t, myBool, "error message %s", "formatted")
+func Truef(t TestingT, value bool, msg string, args ...interface{}) {
+	if assert.Truef(t, value, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// WithinDuration asserts that the two times are within duration delta of each other.
+//
+//   assert.WithinDuration(t, time.Now(), time.Now(), 10*time.Second)
+func WithinDuration(t TestingT, expected time.Time, actual time.Time, delta time.Duration, msgAndArgs ...interface{}) {
+	if assert.WithinDuration(t, expected, actual, delta, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// WithinDurationf asserts that the two times are within duration delta of each other.
+//
+//   assert.WithinDurationf(t, time.Now(), time.Now(), 10*time.Second, "error message %s", "formatted")
+func WithinDurationf(t TestingT, expected time.Time, actual time.Time, delta time.Duration, msg string, args ...interface{}) {
+	if assert.WithinDurationf(t, expected, actual, delta, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Zero asserts that i is the zero value for its type.
+func Zero(t TestingT, i interface{}, msgAndArgs ...interface{}) {
+	if assert.Zero(t, i, msgAndArgs...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
+
+// Zerof asserts that i is the zero value for its type.
+func Zerof(t TestingT, i interface{}, msg string, args ...interface{}) {
+	if assert.Zerof(t, i, msg, args...) {
+		return
+	}
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
+	t.FailNow()
+}
