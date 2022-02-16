@@ -38,4 +38,35 @@ func WithCancel(parent Context) (ctx Context, cancel CancelFunc) {
 // to be no later than d. If the parent's deadline is already earlier than d,
 // WithDeadline(parent, d) is semantically equivalent to parent. The returned
 // context's Done channel is closed when the deadline expires, when the returned
-// cancel funct
+// cancel function is called, or when the parent context's Done channel is
+// closed, whichever happens first.
+//
+// Canceling this context releases resources associated with it, so code should
+// call cancel as soon as the operations running in this Context complete.
+func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc) {
+	ctx, f := context.WithDeadline(parent, deadline)
+	return ctx, CancelFunc(f)
+}
+
+// WithTimeout returns WithDeadline(parent, time.Now().Add(timeout)).
+//
+// Canceling this context releases resources associated with it, so code should
+// call cancel as soon as the operations running in this Context complete:
+//
+// 	func slowOperationWithTimeout(ctx context.Context) (Result, error) {
+// 		ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+// 		defer cancel()  // releases resources if slowOperation completes before timeout elapses
+// 		return slowOperation(ctx)
+// 	}
+func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
+	return WithDeadline(parent, time.Now().Add(timeout))
+}
+
+// WithValue returns a copy of parent in which the value associated with key is
+// val.
+//
+// Use context Values only for request-scoped data that transits processes and
+// APIs, not for passing optional parameters to functions.
+func WithValue(parent Context, key interface{}, val interface{}) Context {
+	return context.WithValue(parent, key, val)
+}
