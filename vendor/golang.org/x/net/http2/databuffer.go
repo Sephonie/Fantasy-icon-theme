@@ -127,4 +127,20 @@ func (b *dataBuffer) Write(p []byte) (int, error) {
 		p = p[n:]
 		b.w += n
 		b.size += n
-		b.expecte
+		b.expected -= int64(n)
+	}
+	return ntotal, nil
+}
+
+func (b *dataBuffer) lastChunkOrAlloc(want int64) []byte {
+	if len(b.chunks) != 0 {
+		last := b.chunks[len(b.chunks)-1]
+		if b.w < len(last) {
+			return last
+		}
+	}
+	chunk := getDataBufferChunk(want)
+	b.chunks = append(b.chunks, chunk)
+	b.w = 0
+	return chunk
+}
