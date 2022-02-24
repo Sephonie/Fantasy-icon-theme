@@ -105,4 +105,138 @@ var flagName = map[FrameType]map[Flags]string{
 		FlagHeadersPriority:   "PRIORITY",
 	},
 	FrameSettings: {
-		FlagSettingsAck: "
+		FlagSettingsAck: "ACK",
+	},
+	FramePing: {
+		FlagPingAck: "ACK",
+	},
+	FrameContinuation: {
+		FlagContinuationEndHeaders: "END_HEADERS",
+	},
+	FramePushPromise: {
+		FlagPushPromiseEndHeaders: "END_HEADERS",
+		FlagPushPromisePadded:     "PADDED",
+	},
+}
+
+// a frameParser parses a frame given its FrameHeader and payload
+// bytes. The length of payload will always equal fh.Length (which
+// might be 0).
+type frameParser func(fc *frameCache, fh FrameHeader, payload []byte) (Frame, error)
+
+var frameParsers = map[FrameType]frameParser{
+	FrameData:         parseDataFrame,
+	FrameHeaders:      parseHeadersFrame,
+	FramePriority:     parsePriorityFrame,
+	FrameRSTStream:    parseRSTStreamFrame,
+	FrameSettings:     parseSettingsFrame,
+	FramePushPromise:  parsePushPromise,
+	FramePing:         parsePingFrame,
+	FrameGoAway:       parseGoAwayFrame,
+	FrameWindowUpdate: parseWindowUpdateFrame,
+	FrameContinuation: parseContinuationFrame,
+}
+
+func typeFrameParser(t FrameType) frameParser {
+	if f := frameParsers[t]; f != nil {
+		return f
+	}
+	return parseUnknownFrame
+}
+
+// A FrameHeader is the 9 byte header of all HTTP/2 frames.
+//
+// See http://http2.github.io/http2-spec/#FrameHeader
+type FrameHeader struct {
+	valid bool // caller can access []byte fields in the Frame
+
+	// Type is the 1 byte frame type. There are ten standard frame
+	// types, but extension frame types may be written by WriteRawFrame
+	// and will be returned by ReadFrame (as UnknownFrame).
+	Type FrameType
+
+	// Flags are the 1 byte of 8 potential bit flags per frame.
+	// They are specific to the frame type.
+	Flags Flags
+
+	// Length is the length of the frame, not including the 9 byte header.
+	// The maximum size is one byte less than 16MB (uint24), but only
+	// frames up to 16KB are allowed without peer agreement.
+	Length uint32
+
+	// StreamID is which stream this frame is for. Certain frames
+	// are not stream-specific, in which case this field is 0.
+	StreamID uint32
+}
+
+// Header returns h. It exists so FrameHeaders can be embedded in other
+// specific frame types and implement the Frame interface.
+func (h FrameHeader) Header() FrameHeader { return h }
+
+func (h FrameHeader) String() string {
+	var buf bytes.Buffer
+	buf.WriteString("[FrameHeader ")
+	h.writeDebug(&buf)
+	buf.WriteByte(']')
+	return buf.String()
+}
+
+func (h FrameHeader) writeDebug(buf *bytes.Buffer) {
+	buf.WriteString(h.Type.String())
+	if h.Flags != 0 {
+		buf.WriteString(" flags=")
+		set := 0
+		for i := uint8(0); i < 8; i++ {
+			if h.Flags&(1<<i) == 0 {
+				continue
+			}
+			set++
+			if set > 1 {
+				buf.WriteByte('|')
+			}
+			name := flagName[h.Type][Flags(1<<i)]
+			if name != "" {
+				buf.WriteString(name)
+			} else {
+				fmt.Fprintf(buf, "0x%x", 1<<i)
+			}
+		}
+	}
+	if h.StreamID != 0 {
+		fmt.Fprintf(buf, " stream=%d", h.StreamID)
+	}
+	fmt.Fprintf(buf, " len=%d", h.Length)
+}
+
+func (h *FrameHeader) checkValid() {
+	if !h.valid {
+		panic("Frame accessor called on non-owned Frame")
+	}
+}
+
+func (h *FrameHeader) invalidate() { h.valid = false }
+
+// frame header bytes.
+// Used only by ReadFrameHeader.
+var fhBytes = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, frameHeaderLen)
+		return &buf
+	},
+}
+
+// ReadFrameHeader reads 9 bytes from r and returns a FrameHeader.
+// Most users should use Framer.ReadFrame instead.
+func ReadFrameHeader(r io.Reader) (FrameHeader, error) {
+	bufp := fhBytes.Get().(*[]byte)
+	defer fhBytes.Put(bufp)
+	return readFrameHeader(*bufp, r)
+}
+
+func readFrameHeader(buf []byte, r io.Reader) (FrameHeader, error) {
+	_, err := io.ReadFull(r, buf[:frameHeaderLen])
+	if err != nil {
+		return FrameHeader{}, err
+	}
+	return FrameHeader{
+		Length:   (uint32(buf[0])<<16 | uint32(buf[1])<<8 | uint32(
