@@ -239,4 +239,114 @@ func readFrameHeader(buf []byte, r io.Reader) (FrameHeader, error) {
 		return FrameHeader{}, err
 	}
 	return FrameHeader{
-		Length:   (uint32(buf[0])<<16 | uint32(buf[1])<<8 | uint32(
+		Length:   (uint32(buf[0])<<16 | uint32(buf[1])<<8 | uint32(buf[2])),
+		Type:     FrameType(buf[3]),
+		Flags:    Flags(buf[4]),
+		StreamID: binary.BigEndian.Uint32(buf[5:]) & (1<<31 - 1),
+		valid:    true,
+	}, nil
+}
+
+// A Frame is the base interface implemented by all frame types.
+// Callers will generally type-assert the specific frame type:
+// *HeadersFrame, *SettingsFrame, *WindowUpdateFrame, etc.
+//
+// Frames are only valid until the next call to Framer.ReadFrame.
+type Frame interface {
+	Header() FrameHeader
+
+	// invalidate is called by Framer.ReadFrame to make this
+	// frame's buffers as being invalid, since the subsequent
+	// frame will reuse them.
+	invalidate()
+}
+
+// A Framer reads and writes Frames.
+type Framer struct {
+	r         io.Reader
+	lastFrame Frame
+	errDetail error
+
+	// lastHeaderStream is non-zero if the last frame was an
+	// unfinished HEADERS/CONTINUATION.
+	lastHeaderStream uint32
+
+	maxReadSize uint32
+	headerBuf   [frameHeaderLen]byte
+
+	// TODO: let getReadBuf be configurable, and use a less memory-pinning
+	// allocator in server.go to minimize memory pinned for many idle conns.
+	// Will probably also need to make frame invalidation have a hook too.
+	getReadBuf func(size uint32) []byte
+	readBuf    []byte // cache for default getReadBuf
+
+	maxWriteSize uint32 // zero means unlimited; TODO: implement
+
+	w    io.Writer
+	wbuf []byte
+
+	// AllowIllegalWrites permits the Framer's Write methods to
+	// write frames that do not conform to the HTTP/2 spec. This
+	// permits using the Framer to test other HTTP/2
+	// implementations' conformance to the spec.
+	// If false, the Write methods will prefer to return an error
+	// rather than comply.
+	AllowIllegalWrites bool
+
+	// AllowIllegalReads permits the Framer's ReadFrame method
+	// to return non-compliant frames or frame orders.
+	// This is for testing and permits using the Framer to test
+	// other HTTP/2 implementations' conformance to the spec.
+	// It is not compatible with ReadMetaHeaders.
+	AllowIllegalReads bool
+
+	// ReadMetaHeaders if non-nil causes ReadFrame to merge
+	// HEADERS and CONTINUATION frames together and return
+	// MetaHeadersFrame instead.
+	ReadMetaHeaders *hpack.Decoder
+
+	// MaxHeaderListSize is the http2 MAX_HEADER_LIST_SIZE.
+	// It's used only if ReadMetaHeaders is set; 0 means a sane default
+	// (currently 16MB)
+	// If the limit is hit, MetaHeadersFrame.Truncated is set true.
+	MaxHeaderListSize uint32
+
+	// TODO: track which type of frame & with which flags was sent
+	// last. Then return an error (unless AllowIllegalWrites) if
+	// we're in the middle of a header block and a
+	// non-Continuation or Continuation on a different stream is
+	// attempted to be written.
+
+	logReads, logWrites bool
+
+	debugFramer       *Framer // only use for logging written writes
+	debugFramerBuf    *bytes.Buffer
+	debugReadLoggerf  func(string, ...interface{})
+	debugWriteLoggerf func(string, ...interface{})
+
+	frameCache *frameCache // nil if frames aren't reused (default)
+}
+
+func (fr *Framer) maxHeaderListSize() uint32 {
+	if fr.MaxHeaderListSize == 0 {
+		return 16 << 20 // sane default, per docs
+	}
+	return fr.MaxHeaderListSize
+}
+
+func (f *Framer) startWrite(ftype FrameType, flags Flags, streamID uint32) {
+	// Write the FrameHeader.
+	f.wbuf = append(f.wbuf[:0],
+		0, // 3 bytes of length, filled in in endWrite
+		0,
+		0,
+		byte(ftype),
+		byte(flags),
+		byte(streamID>>24),
+		byte(streamID>>16),
+		byte(streamID>>8),
+		byte(streamID))
+}
+
+func (f *Framer) endWrite() error {
+	// Now that we know the fi
