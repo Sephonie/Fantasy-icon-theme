@@ -468,4 +468,126 @@ func (fr *Framer) ErrorDetail() error {
 // sends a frame that is larger than declared with SetMaxReadFrameSize.
 var ErrFrameTooLarge = errors.New("http2: frame too large")
 
-// terminalReadFrameError reports whether err is a
+// terminalReadFrameError reports whether err is an unrecoverable
+// error from ReadFrame and no other frames should be read.
+func terminalReadFrameError(err error) bool {
+	if _, ok := err.(StreamError); ok {
+		return false
+	}
+	return err != nil
+}
+
+// ReadFrame reads a single frame. The returned Frame is only valid
+// until the next call to ReadFrame.
+//
+// If the frame is larger than previously set with SetMaxReadFrameSize, the
+// returned error is ErrFrameTooLarge. Other errors may be of type
+// ConnectionError, StreamError, or anything else from the underlying
+// reader.
+func (fr *Framer) ReadFrame() (Frame, error) {
+	fr.errDetail = nil
+	if fr.lastFrame != nil {
+		fr.lastFrame.invalidate()
+	}
+	fh, err := readFrameHeader(fr.headerBuf[:], fr.r)
+	if err != nil {
+		return nil, err
+	}
+	if fh.Length > fr.maxReadSize {
+		return nil, ErrFrameTooLarge
+	}
+	payload := fr.getReadBuf(fh.Length)
+	if _, err := io.ReadFull(fr.r, payload); err != nil {
+		return nil, err
+	}
+	f, err := typeFrameParser(fh.Type)(fr.frameCache, fh, payload)
+	if err != nil {
+		if ce, ok := err.(connError); ok {
+			return nil, fr.connError(ce.Code, ce.Reason)
+		}
+		return nil, err
+	}
+	if err := fr.checkFrameOrder(f); err != nil {
+		return nil, err
+	}
+	if fr.logReads {
+		fr.debugReadLoggerf("http2: Framer %p: read %v", fr, summarizeFrame(f))
+	}
+	if fh.Type == FrameHeaders && fr.ReadMetaHeaders != nil {
+		return fr.readMetaFrame(f.(*HeadersFrame))
+	}
+	return f, nil
+}
+
+// connError returns ConnectionError(code) but first
+// stashes away a public reason to the caller can optionally relay it
+// to the peer before hanging up on them. This might help others debug
+// their implementations.
+func (fr *Framer) connError(code ErrCode, reason string) error {
+	fr.errDetail = errors.New(reason)
+	return ConnectionError(code)
+}
+
+// checkFrameOrder reports an error if f is an invalid frame to return
+// next from ReadFrame. Mostly it checks whether HEADERS and
+// CONTINUATION frames are contiguous.
+func (fr *Framer) checkFrameOrder(f Frame) error {
+	last := fr.lastFrame
+	fr.lastFrame = f
+	if fr.AllowIllegalReads {
+		return nil
+	}
+
+	fh := f.Header()
+	if fr.lastHeaderStream != 0 {
+		if fh.Type != FrameContinuation {
+			return fr.connError(ErrCodeProtocol,
+				fmt.Sprintf("got %s for stream %d; expected CONTINUATION following %s for stream %d",
+					fh.Type, fh.StreamID,
+					last.Header().Type, fr.lastHeaderStream))
+		}
+		if fh.StreamID != fr.lastHeaderStream {
+			return fr.connError(ErrCodeProtocol,
+				fmt.Sprintf("got CONTINUATION for stream %d; expected stream %d",
+					fh.StreamID, fr.lastHeaderStream))
+		}
+	} else if fh.Type == FrameContinuation {
+		return fr.connError(ErrCodeProtocol, fmt.Sprintf("unexpected CONTINUATION for stream %d", fh.StreamID))
+	}
+
+	switch fh.Type {
+	case FrameHeaders, FrameContinuation:
+		if fh.Flags.Has(FlagHeadersEndHeaders) {
+			fr.lastHeaderStream = 0
+		} else {
+			fr.lastHeaderStream = fh.StreamID
+		}
+	}
+
+	return nil
+}
+
+// A DataFrame conveys arbitrary, variable-length sequences of octets
+// associated with a stream.
+// See http://http2.github.io/http2-spec/#rfc.section.6.1
+type DataFrame struct {
+	FrameHeader
+	data []byte
+}
+
+func (f *DataFrame) StreamEnded() bool {
+	return f.FrameHeader.Flags.Has(FlagDataEndStream)
+}
+
+// Data returns the frame's data octets, not including any padding
+// size byte or padding suffix bytes.
+// The caller must not retain the returned memory past the next
+// call to ReadFrame.
+func (f *DataFrame) Data() []byte {
+	f.checkValid()
+	return f.data
+}
+
+func parseDataFrame(fc *frameCache, fh FrameHeader, payload []byte) (Frame, error) {
+	if fh.StreamID == 0 {
+		// DATA f
