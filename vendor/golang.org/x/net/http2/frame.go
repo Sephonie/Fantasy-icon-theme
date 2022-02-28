@@ -349,4 +349,123 @@ func (f *Framer) startWrite(ftype FrameType, flags Flags, streamID uint32) {
 }
 
 func (f *Framer) endWrite() error {
-	// Now that we know the fi
+	// Now that we know the final size, fill in the FrameHeader in
+	// the space previously reserved for it. Abuse append.
+	length := len(f.wbuf) - frameHeaderLen
+	if length >= (1 << 24) {
+		return ErrFrameTooLarge
+	}
+	_ = append(f.wbuf[:0],
+		byte(length>>16),
+		byte(length>>8),
+		byte(length))
+	if f.logWrites {
+		f.logWrite()
+	}
+
+	n, err := f.w.Write(f.wbuf)
+	if err == nil && n != len(f.wbuf) {
+		err = io.ErrShortWrite
+	}
+	return err
+}
+
+func (f *Framer) logWrite() {
+	if f.debugFramer == nil {
+		f.debugFramerBuf = new(bytes.Buffer)
+		f.debugFramer = NewFramer(nil, f.debugFramerBuf)
+		f.debugFramer.logReads = false // we log it ourselves, saying "wrote" below
+		// Let us read anything, even if we accidentally wrote it
+		// in the wrong order:
+		f.debugFramer.AllowIllegalReads = true
+	}
+	f.debugFramerBuf.Write(f.wbuf)
+	fr, err := f.debugFramer.ReadFrame()
+	if err != nil {
+		f.debugWriteLoggerf("http2: Framer %p: failed to decode just-written frame", f)
+		return
+	}
+	f.debugWriteLoggerf("http2: Framer %p: wrote %v", f, summarizeFrame(fr))
+}
+
+func (f *Framer) writeByte(v byte)     { f.wbuf = append(f.wbuf, v) }
+func (f *Framer) writeBytes(v []byte)  { f.wbuf = append(f.wbuf, v...) }
+func (f *Framer) writeUint16(v uint16) { f.wbuf = append(f.wbuf, byte(v>>8), byte(v)) }
+func (f *Framer) writeUint32(v uint32) {
+	f.wbuf = append(f.wbuf, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
+}
+
+const (
+	minMaxFrameSize = 1 << 14
+	maxFrameSize    = 1<<24 - 1
+)
+
+// SetReuseFrames allows the Framer to reuse Frames.
+// If called on a Framer, Frames returned by calls to ReadFrame are only
+// valid until the next call to ReadFrame.
+func (fr *Framer) SetReuseFrames() {
+	if fr.frameCache != nil {
+		return
+	}
+	fr.frameCache = &frameCache{}
+}
+
+type frameCache struct {
+	dataFrame DataFrame
+}
+
+func (fc *frameCache) getDataFrame() *DataFrame {
+	if fc == nil {
+		return &DataFrame{}
+	}
+	return &fc.dataFrame
+}
+
+// NewFramer returns a Framer that writes frames to w and reads them from r.
+func NewFramer(w io.Writer, r io.Reader) *Framer {
+	fr := &Framer{
+		w:                 w,
+		r:                 r,
+		logReads:          logFrameReads,
+		logWrites:         logFrameWrites,
+		debugReadLoggerf:  log.Printf,
+		debugWriteLoggerf: log.Printf,
+	}
+	fr.getReadBuf = func(size uint32) []byte {
+		if cap(fr.readBuf) >= int(size) {
+			return fr.readBuf[:size]
+		}
+		fr.readBuf = make([]byte, size)
+		return fr.readBuf
+	}
+	fr.SetMaxReadFrameSize(maxFrameSize)
+	return fr
+}
+
+// SetMaxReadFrameSize sets the maximum size of a frame
+// that will be read by a subsequent call to ReadFrame.
+// It is the caller's responsibility to advertise this
+// limit with a SETTINGS frame.
+func (fr *Framer) SetMaxReadFrameSize(v uint32) {
+	if v > maxFrameSize {
+		v = maxFrameSize
+	}
+	fr.maxReadSize = v
+}
+
+// ErrorDetail returns a more detailed error of the last error
+// returned by Framer.ReadFrame. For instance, if ReadFrame
+// returns a StreamError with code PROTOCOL_ERROR, ErrorDetail
+// will say exactly what was invalid. ErrorDetail is not guaranteed
+// to return a non-nil value and like the rest of the http2 package,
+// its return value is not protected by an API compatibility promise.
+// ErrorDetail is reset after the next call to ReadFrame.
+func (fr *Framer) ErrorDetail() error {
+	return fr.errDetail
+}
+
+// ErrFrameTooLarge is returned from Framer.ReadFrame when the peer
+// sends a frame that is larger than declared with SetMaxReadFrameSize.
+var ErrFrameTooLarge = errors.New("http2: frame too large")
+
+// terminalReadFrameError reports whether err is a
