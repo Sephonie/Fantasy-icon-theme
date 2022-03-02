@@ -590,4 +590,114 @@ func (f *DataFrame) Data() []byte {
 
 func parseDataFrame(fc *frameCache, fh FrameHeader, payload []byte) (Frame, error) {
 	if fh.StreamID == 0 {
-		// DATA f
+		// DATA frames MUST be associated with a stream. If a
+		// DATA frame is received whose stream identifier
+		// field is 0x0, the recipient MUST respond with a
+		// connection error (Section 5.4.1) of type
+		// PROTOCOL_ERROR.
+		return nil, connError{ErrCodeProtocol, "DATA frame with stream ID 0"}
+	}
+	f := fc.getDataFrame()
+	f.FrameHeader = fh
+
+	var padSize byte
+	if fh.Flags.Has(FlagDataPadded) {
+		var err error
+		payload, padSize, err = readByte(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if int(padSize) > len(payload) {
+		// If the length of the padding is greater than the
+		// length of the frame payload, the recipient MUST
+		// treat this as a connection error.
+		// Filed: https://github.com/http2/http2-spec/issues/610
+		return nil, connError{ErrCodeProtocol, "pad size larger than data payload"}
+	}
+	f.data = payload[:len(payload)-int(padSize)]
+	return f, nil
+}
+
+var (
+	errStreamID    = errors.New("invalid stream ID")
+	errDepStreamID = errors.New("invalid dependent stream ID")
+	errPadLength   = errors.New("pad length too large")
+	errPadBytes    = errors.New("padding bytes must all be zeros unless AllowIllegalWrites is enabled")
+)
+
+func validStreamIDOrZero(streamID uint32) bool {
+	return streamID&(1<<31) == 0
+}
+
+func validStreamID(streamID uint32) bool {
+	return streamID != 0 && streamID&(1<<31) == 0
+}
+
+// WriteData writes a DATA frame.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility not to violate the maximum frame size
+// and to not call other Write methods concurrently.
+func (f *Framer) WriteData(streamID uint32, endStream bool, data []byte) error {
+	return f.WriteDataPadded(streamID, endStream, data, nil)
+}
+
+// WriteData writes a DATA frame with optional padding.
+//
+// If pad is nil, the padding bit is not sent.
+// The length of pad must not exceed 255 bytes.
+// The bytes of pad must all be zero, unless f.AllowIllegalWrites is set.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility not to violate the maximum frame size
+// and to not call other Write methods concurrently.
+func (f *Framer) WriteDataPadded(streamID uint32, endStream bool, data, pad []byte) error {
+	if !validStreamID(streamID) && !f.AllowIllegalWrites {
+		return errStreamID
+	}
+	if len(pad) > 0 {
+		if len(pad) > 255 {
+			return errPadLength
+		}
+		if !f.AllowIllegalWrites {
+			for _, b := range pad {
+				if b != 0 {
+					// "Padding octets MUST be set to zero when sending."
+					return errPadBytes
+				}
+			}
+		}
+	}
+	var flags Flags
+	if endStream {
+		flags |= FlagDataEndStream
+	}
+	if pad != nil {
+		flags |= FlagDataPadded
+	}
+	f.startWrite(FrameData, flags, streamID)
+	if pad != nil {
+		f.wbuf = append(f.wbuf, byte(len(pad)))
+	}
+	f.wbuf = append(f.wbuf, data...)
+	f.wbuf = append(f.wbuf, pad...)
+	return f.endWrite()
+}
+
+// A SettingsFrame conveys configuration parameters that affect how
+// endpoints communicate, such as preferences and constraints on peer
+// behavior.
+//
+// See http://http2.github.io/http2-spec/#SETTINGS
+type SettingsFrame struct {
+	FrameHeader
+	p []byte
+}
+
+func parseSettingsFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, error) {
+	if fh.Flags.Has(FlagSettingsAck) && fh.Length > 0 {
+		// When this (ACK 0x1) bit is set, the payload of the
+		// SETTINGS frame MUST be empty. Receipt of a
+		// SETTINGS frame with the ACK flag set and a length
+		// field v
