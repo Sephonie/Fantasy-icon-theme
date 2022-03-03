@@ -821,4 +821,116 @@ func (f *Framer) WritePing(ack bool, data [8]byte) error {
 
 // A GoAwayFrame informs the remote peer to stop creating streams on this connection.
 // See http://http2.github.io/http2-spec/#rfc.section.6.8
-type GoAwayFrame
+type GoAwayFrame struct {
+	FrameHeader
+	LastStreamID uint32
+	ErrCode      ErrCode
+	debugData    []byte
+}
+
+// DebugData returns any debug data in the GOAWAY frame. Its contents
+// are not defined.
+// The caller must not retain the returned memory past the next
+// call to ReadFrame.
+func (f *GoAwayFrame) DebugData() []byte {
+	f.checkValid()
+	return f.debugData
+}
+
+func parseGoAwayFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, error) {
+	if fh.StreamID != 0 {
+		return nil, ConnectionError(ErrCodeProtocol)
+	}
+	if len(p) < 8 {
+		return nil, ConnectionError(ErrCodeFrameSize)
+	}
+	return &GoAwayFrame{
+		FrameHeader:  fh,
+		LastStreamID: binary.BigEndian.Uint32(p[:4]) & (1<<31 - 1),
+		ErrCode:      ErrCode(binary.BigEndian.Uint32(p[4:8])),
+		debugData:    p[8:],
+	}, nil
+}
+
+func (f *Framer) WriteGoAway(maxStreamID uint32, code ErrCode, debugData []byte) error {
+	f.startWrite(FrameGoAway, 0, 0)
+	f.writeUint32(maxStreamID & (1<<31 - 1))
+	f.writeUint32(uint32(code))
+	f.writeBytes(debugData)
+	return f.endWrite()
+}
+
+// An UnknownFrame is the frame type returned when the frame type is unknown
+// or no specific frame type parser exists.
+type UnknownFrame struct {
+	FrameHeader
+	p []byte
+}
+
+// Payload returns the frame's payload (after the header).  It is not
+// valid to call this method after a subsequent call to
+// Framer.ReadFrame, nor is it valid to retain the returned slice.
+// The memory is owned by the Framer and is invalidated when the next
+// frame is read.
+func (f *UnknownFrame) Payload() []byte {
+	f.checkValid()
+	return f.p
+}
+
+func parseUnknownFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, error) {
+	return &UnknownFrame{fh, p}, nil
+}
+
+// A WindowUpdateFrame is used to implement flow control.
+// See http://http2.github.io/http2-spec/#rfc.section.6.9
+type WindowUpdateFrame struct {
+	FrameHeader
+	Increment uint32 // never read with high bit set
+}
+
+func parseWindowUpdateFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, error) {
+	if len(p) != 4 {
+		return nil, ConnectionError(ErrCodeFrameSize)
+	}
+	inc := binary.BigEndian.Uint32(p[:4]) & 0x7fffffff // mask off high reserved bit
+	if inc == 0 {
+		// A receiver MUST treat the receipt of a
+		// WINDOW_UPDATE frame with an flow control window
+		// increment of 0 as a stream error (Section 5.4.2) of
+		// type PROTOCOL_ERROR; errors on the connection flow
+		// control window MUST be treated as a connection
+		// error (Section 5.4.1).
+		if fh.StreamID == 0 {
+			return nil, ConnectionError(ErrCodeProtocol)
+		}
+		return nil, streamError(fh.StreamID, ErrCodeProtocol)
+	}
+	return &WindowUpdateFrame{
+		FrameHeader: fh,
+		Increment:   inc,
+	}, nil
+}
+
+// WriteWindowUpdate writes a WINDOW_UPDATE frame.
+// The increment value must be between 1 and 2,147,483,647, inclusive.
+// If the Stream ID is zero, the window update applies to the
+// connection as a whole.
+func (f *Framer) WriteWindowUpdate(streamID, incr uint32) error {
+	// "The legal range for the increment to the flow control window is 1 to 2^31-1 (2,147,483,647) octets."
+	if (incr < 1 || incr > 2147483647) && !f.AllowIllegalWrites {
+		return errors.New("illegal window increment value")
+	}
+	f.startWrite(FrameWindowUpdate, 0, streamID)
+	f.writeUint32(incr)
+	return f.endWrite()
+}
+
+// A HeadersFrame is used to open a stream and additionally carries a
+// header block fragment.
+type HeadersFrame struct {
+	FrameHeader
+
+	// Priority is set if FlagHeadersPriority is set in the FrameHeader.
+	Priority PriorityParam
+
+	heade
