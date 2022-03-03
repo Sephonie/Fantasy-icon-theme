@@ -700,4 +700,125 @@ func parseSettingsFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, error) 
 		// When this (ACK 0x1) bit is set, the payload of the
 		// SETTINGS frame MUST be empty. Receipt of a
 		// SETTINGS frame with the ACK flag set and a length
-		// field v
+		// field value other than 0 MUST be treated as a
+		// connection error (Section 5.4.1) of type
+		// FRAME_SIZE_ERROR.
+		return nil, ConnectionError(ErrCodeFrameSize)
+	}
+	if fh.StreamID != 0 {
+		// SETTINGS frames always apply to a connection,
+		// never a single stream. The stream identifier for a
+		// SETTINGS frame MUST be zero (0x0).  If an endpoint
+		// receives a SETTINGS frame whose stream identifier
+		// field is anything other than 0x0, the endpoint MUST
+		// respond with a connection error (Section 5.4.1) of
+		// type PROTOCOL_ERROR.
+		return nil, ConnectionError(ErrCodeProtocol)
+	}
+	if len(p)%6 != 0 {
+		// Expecting even number of 6 byte settings.
+		return nil, ConnectionError(ErrCodeFrameSize)
+	}
+	f := &SettingsFrame{FrameHeader: fh, p: p}
+	if v, ok := f.Value(SettingInitialWindowSize); ok && v > (1<<31)-1 {
+		// Values above the maximum flow control window size of 2^31 - 1 MUST
+		// be treated as a connection error (Section 5.4.1) of type
+		// FLOW_CONTROL_ERROR.
+		return nil, ConnectionError(ErrCodeFlowControl)
+	}
+	return f, nil
+}
+
+func (f *SettingsFrame) IsAck() bool {
+	return f.FrameHeader.Flags.Has(FlagSettingsAck)
+}
+
+func (f *SettingsFrame) Value(s SettingID) (v uint32, ok bool) {
+	f.checkValid()
+	buf := f.p
+	for len(buf) > 0 {
+		settingID := SettingID(binary.BigEndian.Uint16(buf[:2]))
+		if settingID == s {
+			return binary.BigEndian.Uint32(buf[2:6]), true
+		}
+		buf = buf[6:]
+	}
+	return 0, false
+}
+
+// ForeachSetting runs fn for each setting.
+// It stops and returns the first error.
+func (f *SettingsFrame) ForeachSetting(fn func(Setting) error) error {
+	f.checkValid()
+	buf := f.p
+	for len(buf) > 0 {
+		if err := fn(Setting{
+			SettingID(binary.BigEndian.Uint16(buf[:2])),
+			binary.BigEndian.Uint32(buf[2:6]),
+		}); err != nil {
+			return err
+		}
+		buf = buf[6:]
+	}
+	return nil
+}
+
+// WriteSettings writes a SETTINGS frame with zero or more settings
+// specified and the ACK bit not set.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility to not call other Write methods concurrently.
+func (f *Framer) WriteSettings(settings ...Setting) error {
+	f.startWrite(FrameSettings, 0, 0)
+	for _, s := range settings {
+		f.writeUint16(uint16(s.ID))
+		f.writeUint32(s.Val)
+	}
+	return f.endWrite()
+}
+
+// WriteSettingsAck writes an empty SETTINGS frame with the ACK bit set.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility to not call other Write methods concurrently.
+func (f *Framer) WriteSettingsAck() error {
+	f.startWrite(FrameSettings, FlagSettingsAck, 0)
+	return f.endWrite()
+}
+
+// A PingFrame is a mechanism for measuring a minimal round trip time
+// from the sender, as well as determining whether an idle connection
+// is still functional.
+// See http://http2.github.io/http2-spec/#rfc.section.6.7
+type PingFrame struct {
+	FrameHeader
+	Data [8]byte
+}
+
+func (f *PingFrame) IsAck() bool { return f.Flags.Has(FlagPingAck) }
+
+func parsePingFrame(_ *frameCache, fh FrameHeader, payload []byte) (Frame, error) {
+	if len(payload) != 8 {
+		return nil, ConnectionError(ErrCodeFrameSize)
+	}
+	if fh.StreamID != 0 {
+		return nil, ConnectionError(ErrCodeProtocol)
+	}
+	f := &PingFrame{FrameHeader: fh}
+	copy(f.Data[:], payload)
+	return f, nil
+}
+
+func (f *Framer) WritePing(ack bool, data [8]byte) error {
+	var flags Flags
+	if ack {
+		flags = FlagPingAck
+	}
+	f.startWrite(FramePing, flags, 0)
+	f.writeBytes(data[:])
+	return f.endWrite()
+}
+
+// A GoAwayFrame informs the remote peer to stop creating streams on this connection.
+// See http://http2.github.io/http2-spec/#rfc.section.6.8
+type GoAwayFrame
