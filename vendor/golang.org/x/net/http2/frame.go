@@ -1057,4 +1057,123 @@ func (f *Framer) WriteHeaders(p HeadersFrameParam) error {
 		f.writeUint32(v)
 		f.writeByte(p.Priority.Weight)
 	}
-	f.wbuf = append(f.wbuf, p.Block
+	f.wbuf = append(f.wbuf, p.BlockFragment...)
+	f.wbuf = append(f.wbuf, padZeros[:p.PadLength]...)
+	return f.endWrite()
+}
+
+// A PriorityFrame specifies the sender-advised priority of a stream.
+// See http://http2.github.io/http2-spec/#rfc.section.6.3
+type PriorityFrame struct {
+	FrameHeader
+	PriorityParam
+}
+
+// PriorityParam are the stream prioritzation parameters.
+type PriorityParam struct {
+	// StreamDep is a 31-bit stream identifier for the
+	// stream that this stream depends on. Zero means no
+	// dependency.
+	StreamDep uint32
+
+	// Exclusive is whether the dependency is exclusive.
+	Exclusive bool
+
+	// Weight is the stream's zero-indexed weight. It should be
+	// set together with StreamDep, or neither should be set. Per
+	// the spec, "Add one to the value to obtain a weight between
+	// 1 and 256."
+	Weight uint8
+}
+
+func (p PriorityParam) IsZero() bool {
+	return p == PriorityParam{}
+}
+
+func parsePriorityFrame(_ *frameCache, fh FrameHeader, payload []byte) (Frame, error) {
+	if fh.StreamID == 0 {
+		return nil, connError{ErrCodeProtocol, "PRIORITY frame with stream ID 0"}
+	}
+	if len(payload) != 5 {
+		return nil, connError{ErrCodeFrameSize, fmt.Sprintf("PRIORITY frame payload size was %d; want 5", len(payload))}
+	}
+	v := binary.BigEndian.Uint32(payload[:4])
+	streamID := v & 0x7fffffff // mask off high bit
+	return &PriorityFrame{
+		FrameHeader: fh,
+		PriorityParam: PriorityParam{
+			Weight:    payload[4],
+			StreamDep: streamID,
+			Exclusive: streamID != v, // was high bit set?
+		},
+	}, nil
+}
+
+// WritePriority writes a PRIORITY frame.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility to not call other Write methods concurrently.
+func (f *Framer) WritePriority(streamID uint32, p PriorityParam) error {
+	if !validStreamID(streamID) && !f.AllowIllegalWrites {
+		return errStreamID
+	}
+	if !validStreamIDOrZero(p.StreamDep) {
+		return errDepStreamID
+	}
+	f.startWrite(FramePriority, 0, streamID)
+	v := p.StreamDep
+	if p.Exclusive {
+		v |= 1 << 31
+	}
+	f.writeUint32(v)
+	f.writeByte(p.Weight)
+	return f.endWrite()
+}
+
+// A RSTStreamFrame allows for abnormal termination of a stream.
+// See http://http2.github.io/http2-spec/#rfc.section.6.4
+type RSTStreamFrame struct {
+	FrameHeader
+	ErrCode ErrCode
+}
+
+func parseRSTStreamFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, error) {
+	if len(p) != 4 {
+		return nil, ConnectionError(ErrCodeFrameSize)
+	}
+	if fh.StreamID == 0 {
+		return nil, ConnectionError(ErrCodeProtocol)
+	}
+	return &RSTStreamFrame{fh, ErrCode(binary.BigEndian.Uint32(p[:4]))}, nil
+}
+
+// WriteRSTStream writes a RST_STREAM frame.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility to not call other Write methods concurrently.
+func (f *Framer) WriteRSTStream(streamID uint32, code ErrCode) error {
+	if !validStreamID(streamID) && !f.AllowIllegalWrites {
+		return errStreamID
+	}
+	f.startWrite(FrameRSTStream, 0, streamID)
+	f.writeUint32(uint32(code))
+	return f.endWrite()
+}
+
+// A ContinuationFrame is used to continue a sequence of header block fragments.
+// See http://http2.github.io/http2-spec/#rfc.section.6.10
+type ContinuationFrame struct {
+	FrameHeader
+	headerFragBuf []byte
+}
+
+func parseContinuationFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, error) {
+	if fh.StreamID == 0 {
+		return nil, connError{ErrCodeProtocol, "CONTINUATION frame with stream ID 0"}
+	}
+	return &ContinuationFrame{fh, p}, nil
+}
+
+func (f *ContinuationFrame) HeaderBlockFragment() []byte {
+	f.checkValid()
+	return f.headerFragBu
