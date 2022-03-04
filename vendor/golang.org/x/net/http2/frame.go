@@ -933,4 +933,128 @@ type HeadersFrame struct {
 	// Priority is set if FlagHeadersPriority is set in the FrameHeader.
 	Priority PriorityParam
 
-	heade
+	headerFragBuf []byte // not owned
+}
+
+func (f *HeadersFrame) HeaderBlockFragment() []byte {
+	f.checkValid()
+	return f.headerFragBuf
+}
+
+func (f *HeadersFrame) HeadersEnded() bool {
+	return f.FrameHeader.Flags.Has(FlagHeadersEndHeaders)
+}
+
+func (f *HeadersFrame) StreamEnded() bool {
+	return f.FrameHeader.Flags.Has(FlagHeadersEndStream)
+}
+
+func (f *HeadersFrame) HasPriority() bool {
+	return f.FrameHeader.Flags.Has(FlagHeadersPriority)
+}
+
+func parseHeadersFrame(_ *frameCache, fh FrameHeader, p []byte) (_ Frame, err error) {
+	hf := &HeadersFrame{
+		FrameHeader: fh,
+	}
+	if fh.StreamID == 0 {
+		// HEADERS frames MUST be associated with a stream. If a HEADERS frame
+		// is received whose stream identifier field is 0x0, the recipient MUST
+		// respond with a connection error (Section 5.4.1) of type
+		// PROTOCOL_ERROR.
+		return nil, connError{ErrCodeProtocol, "HEADERS frame with stream ID 0"}
+	}
+	var padLength uint8
+	if fh.Flags.Has(FlagHeadersPadded) {
+		if p, padLength, err = readByte(p); err != nil {
+			return
+		}
+	}
+	if fh.Flags.Has(FlagHeadersPriority) {
+		var v uint32
+		p, v, err = readUint32(p)
+		if err != nil {
+			return nil, err
+		}
+		hf.Priority.StreamDep = v & 0x7fffffff
+		hf.Priority.Exclusive = (v != hf.Priority.StreamDep) // high bit was set
+		p, hf.Priority.Weight, err = readByte(p)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(p)-int(padLength) <= 0 {
+		return nil, streamError(fh.StreamID, ErrCodeProtocol)
+	}
+	hf.headerFragBuf = p[:len(p)-int(padLength)]
+	return hf, nil
+}
+
+// HeadersFrameParam are the parameters for writing a HEADERS frame.
+type HeadersFrameParam struct {
+	// StreamID is the required Stream ID to initiate.
+	StreamID uint32
+	// BlockFragment is part (or all) of a Header Block.
+	BlockFragment []byte
+
+	// EndStream indicates that the header block is the last that
+	// the endpoint will send for the identified stream. Setting
+	// this flag causes the stream to enter one of "half closed"
+	// states.
+	EndStream bool
+
+	// EndHeaders indicates that this frame contains an entire
+	// header block and is not followed by any
+	// CONTINUATION frames.
+	EndHeaders bool
+
+	// PadLength is the optional number of bytes of zeros to add
+	// to this frame.
+	PadLength uint8
+
+	// Priority, if non-zero, includes stream priority information
+	// in the HEADER frame.
+	Priority PriorityParam
+}
+
+// WriteHeaders writes a single HEADERS frame.
+//
+// This is a low-level header writing method. Encoding headers and
+// splitting them into any necessary CONTINUATION frames is handled
+// elsewhere.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility to not call other Write methods concurrently.
+func (f *Framer) WriteHeaders(p HeadersFrameParam) error {
+	if !validStreamID(p.StreamID) && !f.AllowIllegalWrites {
+		return errStreamID
+	}
+	var flags Flags
+	if p.PadLength != 0 {
+		flags |= FlagHeadersPadded
+	}
+	if p.EndStream {
+		flags |= FlagHeadersEndStream
+	}
+	if p.EndHeaders {
+		flags |= FlagHeadersEndHeaders
+	}
+	if !p.Priority.IsZero() {
+		flags |= FlagHeadersPriority
+	}
+	f.startWrite(FrameHeaders, flags, p.StreamID)
+	if p.PadLength != 0 {
+		f.writeByte(p.PadLength)
+	}
+	if !p.Priority.IsZero() {
+		v := p.Priority.StreamDep
+		if !validStreamIDOrZero(v) && !f.AllowIllegalWrites {
+			return errDepStreamID
+		}
+		if p.Priority.Exclusive {
+			v |= 1 << 31
+		}
+		f.writeUint32(v)
+		f.writeByte(p.Priority.Weight)
+	}
+	f.wbuf = append(f.wbuf, p.Block
