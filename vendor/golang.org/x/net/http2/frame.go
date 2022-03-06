@@ -1176,4 +1176,125 @@ func parseContinuationFrame(_ *frameCache, fh FrameHeader, p []byte) (Frame, err
 
 func (f *ContinuationFrame) HeaderBlockFragment() []byte {
 	f.checkValid()
-	return f.headerFragBu
+	return f.headerFragBuf
+}
+
+func (f *ContinuationFrame) HeadersEnded() bool {
+	return f.FrameHeader.Flags.Has(FlagContinuationEndHeaders)
+}
+
+// WriteContinuation writes a CONTINUATION frame.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility to not call other Write methods concurrently.
+func (f *Framer) WriteContinuation(streamID uint32, endHeaders bool, headerBlockFragment []byte) error {
+	if !validStreamID(streamID) && !f.AllowIllegalWrites {
+		return errStreamID
+	}
+	var flags Flags
+	if endHeaders {
+		flags |= FlagContinuationEndHeaders
+	}
+	f.startWrite(FrameContinuation, flags, streamID)
+	f.wbuf = append(f.wbuf, headerBlockFragment...)
+	return f.endWrite()
+}
+
+// A PushPromiseFrame is used to initiate a server stream.
+// See http://http2.github.io/http2-spec/#rfc.section.6.6
+type PushPromiseFrame struct {
+	FrameHeader
+	PromiseID     uint32
+	headerFragBuf []byte // not owned
+}
+
+func (f *PushPromiseFrame) HeaderBlockFragment() []byte {
+	f.checkValid()
+	return f.headerFragBuf
+}
+
+func (f *PushPromiseFrame) HeadersEnded() bool {
+	return f.FrameHeader.Flags.Has(FlagPushPromiseEndHeaders)
+}
+
+func parsePushPromise(_ *frameCache, fh FrameHeader, p []byte) (_ Frame, err error) {
+	pp := &PushPromiseFrame{
+		FrameHeader: fh,
+	}
+	if pp.StreamID == 0 {
+		// PUSH_PROMISE frames MUST be associated with an existing,
+		// peer-initiated stream. The stream identifier of a
+		// PUSH_PROMISE frame indicates the stream it is associated
+		// with. If the stream identifier field specifies the value
+		// 0x0, a recipient MUST respond with a connection error
+		// (Section 5.4.1) of type PROTOCOL_ERROR.
+		return nil, ConnectionError(ErrCodeProtocol)
+	}
+	// The PUSH_PROMISE frame includes optional padding.
+	// Padding fields and flags are identical to those defined for DATA frames
+	var padLength uint8
+	if fh.Flags.Has(FlagPushPromisePadded) {
+		if p, padLength, err = readByte(p); err != nil {
+			return
+		}
+	}
+
+	p, pp.PromiseID, err = readUint32(p)
+	if err != nil {
+		return
+	}
+	pp.PromiseID = pp.PromiseID & (1<<31 - 1)
+
+	if int(padLength) > len(p) {
+		// like the DATA frame, error out if padding is longer than the body.
+		return nil, ConnectionError(ErrCodeProtocol)
+	}
+	pp.headerFragBuf = p[:len(p)-int(padLength)]
+	return pp, nil
+}
+
+// PushPromiseParam are the parameters for writing a PUSH_PROMISE frame.
+type PushPromiseParam struct {
+	// StreamID is the required Stream ID to initiate.
+	StreamID uint32
+
+	// PromiseID is the required Stream ID which this
+	// Push Promises
+	PromiseID uint32
+
+	// BlockFragment is part (or all) of a Header Block.
+	BlockFragment []byte
+
+	// EndHeaders indicates that this frame contains an entire
+	// header block and is not followed by any
+	// CONTINUATION frames.
+	EndHeaders bool
+
+	// PadLength is the optional number of bytes of zeros to add
+	// to this frame.
+	PadLength uint8
+}
+
+// WritePushPromise writes a single PushPromise Frame.
+//
+// As with Header Frames, This is the low level call for writing
+// individual frames. Continuation frames are handled elsewhere.
+//
+// It will perform exactly one Write to the underlying Writer.
+// It is the caller's responsibility to not call other Write methods concurrently.
+func (f *Framer) WritePushPromise(p PushPromiseParam) error {
+	if !validStreamID(p.StreamID) && !f.AllowIllegalWrites {
+		return errStreamID
+	}
+	var flags Flags
+	if p.PadLength != 0 {
+		flags |= FlagPushPromisePadded
+	}
+	if p.EndHeaders {
+		flags |= FlagPushPromiseEndHeaders
+	}
+	f.startWrite(FramePushPromise, flags, p.StreamID)
+	if p.PadLength != 0 {
+		f.writeByte(p.PadLength)
+	}
+	if !validStreamID(p.P
