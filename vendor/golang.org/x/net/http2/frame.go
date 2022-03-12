@@ -1433,4 +1433,147 @@ func (mh *MetaHeadersFrame) checkPseudos() error {
 
 func (fr *Framer) maxHeaderStringLen() int {
 	v := fr.maxHeaderListSize()
-	if uint32
+	if uint32(int(v)) == v {
+		return int(v)
+	}
+	// They had a crazy big number for MaxHeaderBytes anyway,
+	// so give them unlimited header lengths:
+	return 0
+}
+
+// readMetaFrame returns 0 or more CONTINUATION frames from fr and
+// merge them into into the provided hf and returns a MetaHeadersFrame
+// with the decoded hpack values.
+func (fr *Framer) readMetaFrame(hf *HeadersFrame) (*MetaHeadersFrame, error) {
+	if fr.AllowIllegalReads {
+		return nil, errors.New("illegal use of AllowIllegalReads with ReadMetaHeaders")
+	}
+	mh := &MetaHeadersFrame{
+		HeadersFrame: hf,
+	}
+	var remainSize = fr.maxHeaderListSize()
+	var sawRegular bool
+
+	var invalid error // pseudo header field errors
+	hdec := fr.ReadMetaHeaders
+	hdec.SetEmitEnabled(true)
+	hdec.SetMaxStringLength(fr.maxHeaderStringLen())
+	hdec.SetEmitFunc(func(hf hpack.HeaderField) {
+		if VerboseLogs && fr.logReads {
+			fr.debugReadLoggerf("http2: decoded hpack field %+v", hf)
+		}
+		if !httplex.ValidHeaderFieldValue(hf.Value) {
+			invalid = headerFieldValueError(hf.Value)
+		}
+		isPseudo := strings.HasPrefix(hf.Name, ":")
+		if isPseudo {
+			if sawRegular {
+				invalid = errPseudoAfterRegular
+			}
+		} else {
+			sawRegular = true
+			if !validWireHeaderFieldName(hf.Name) {
+				invalid = headerFieldNameError(hf.Name)
+			}
+		}
+
+		if invalid != nil {
+			hdec.SetEmitEnabled(false)
+			return
+		}
+
+		size := hf.Size()
+		if size > remainSize {
+			hdec.SetEmitEnabled(false)
+			mh.Truncated = true
+			return
+		}
+		remainSize -= size
+
+		mh.Fields = append(mh.Fields, hf)
+	})
+	// Lose reference to MetaHeadersFrame:
+	defer hdec.SetEmitFunc(func(hf hpack.HeaderField) {})
+
+	var hc headersOrContinuation = hf
+	for {
+		frag := hc.HeaderBlockFragment()
+		if _, err := hdec.Write(frag); err != nil {
+			return nil, ConnectionError(ErrCodeCompression)
+		}
+
+		if hc.HeadersEnded() {
+			break
+		}
+		if f, err := fr.ReadFrame(); err != nil {
+			return nil, err
+		} else {
+			hc = f.(*ContinuationFrame) // guaranteed by checkFrameOrder
+		}
+	}
+
+	mh.HeadersFrame.headerFragBuf = nil
+	mh.HeadersFrame.invalidate()
+
+	if err := hdec.Close(); err != nil {
+		return nil, ConnectionError(ErrCodeCompression)
+	}
+	if invalid != nil {
+		fr.errDetail = invalid
+		if VerboseLogs {
+			log.Printf("http2: invalid header: %v", invalid)
+		}
+		return nil, StreamError{mh.StreamID, ErrCodeProtocol, invalid}
+	}
+	if err := mh.checkPseudos(); err != nil {
+		fr.errDetail = err
+		if VerboseLogs {
+			log.Printf("http2: invalid pseudo headers: %v", err)
+		}
+		return nil, StreamError{mh.StreamID, ErrCodeProtocol, err}
+	}
+	return mh, nil
+}
+
+func summarizeFrame(f Frame) string {
+	var buf bytes.Buffer
+	f.Header().writeDebug(&buf)
+	switch f := f.(type) {
+	case *SettingsFrame:
+		n := 0
+		f.ForeachSetting(func(s Setting) error {
+			n++
+			if n == 1 {
+				buf.WriteString(", settings:")
+			}
+			fmt.Fprintf(&buf, " %v=%v,", s.ID, s.Val)
+			return nil
+		})
+		if n > 0 {
+			buf.Truncate(buf.Len() - 1) // remove trailing comma
+		}
+	case *DataFrame:
+		data := f.Data()
+		const max = 256
+		if len(data) > max {
+			data = data[:max]
+		}
+		fmt.Fprintf(&buf, " data=%q", data)
+		if len(f.Data()) > max {
+			fmt.Fprintf(&buf, " (%d bytes omitted)", len(f.Data())-max)
+		}
+	case *WindowUpdateFrame:
+		if f.StreamID == 0 {
+			buf.WriteString(" (conn)")
+		}
+		fmt.Fprintf(&buf, " incr=%v", f.Increment)
+	case *PingFrame:
+		fmt.Fprintf(&buf, " ping=%q", f.Data[:])
+	case *GoAwayFrame:
+		fmt.Fprintf(&buf, " LastStreamID=%v ErrCode=%v Debug=%q",
+			f.LastStreamID, f.ErrCode, f.debugData)
+	case *RSTStreamFrame:
+		fmt.Fprintf(&buf, " ErrCode=%v", f.ErrCode)
+	}
+	return buf.String()
+}
