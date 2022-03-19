@@ -76,4 +76,12 @@ func cloneTLSConfig(c *tls.Config) *tls.Config {
 		ClientSessionCache:       c.ClientSessionCache,
 		MinVersion:               c.MinVersion,
 		MaxVersion:               c.MaxVersion,
-		CurvePreference
+		CurvePreferences:         c.CurvePreferences,
+	}
+}
+
+func (cc *ClientConn) Ping(ctx contextContext) error {
+	return cc.ping(ctx)
+}
+
+func (t *Transport) idleConnTimeout() time.Duration { return 0 }
