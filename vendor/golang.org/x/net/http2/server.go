@@ -168,4 +168,121 @@ type serverInternalState struct {
 
 func (s *serverInternalState) registerConn(sc *serverConn) {
 	if s == nil {
-		return // if the Server wa
+		return // if the Server was used without calling ConfigureServer
+	}
+	s.mu.Lock()
+	s.activeConns[sc] = struct{}{}
+	s.mu.Unlock()
+}
+
+func (s *serverInternalState) unregisterConn(sc *serverConn) {
+	if s == nil {
+		return // if the Server was used without calling ConfigureServer
+	}
+	s.mu.Lock()
+	delete(s.activeConns, sc)
+	s.mu.Unlock()
+}
+
+func (s *serverInternalState) startGracefulShutdown() {
+	if s == nil {
+		return // if the Server was used without calling ConfigureServer
+	}
+	s.mu.Lock()
+	for sc := range s.activeConns {
+		sc.startGracefulShutdown()
+	}
+	s.mu.Unlock()
+}
+
+// ConfigureServer adds HTTP/2 support to a net/http Server.
+//
+// The configuration conf may be nil.
+//
+// ConfigureServer must be called before s begins serving.
+func ConfigureServer(s *http.Server, conf *Server) error {
+	if s == nil {
+		panic("nil *http.Server")
+	}
+	if conf == nil {
+		conf = new(Server)
+	}
+	conf.state = &serverInternalState{activeConns: make(map[*serverConn]struct{})}
+	if err := configureServer18(s, conf); err != nil {
+		return err
+	}
+	if err := configureServer19(s, conf); err != nil {
+		return err
+	}
+
+	if s.TLSConfig == nil {
+		s.TLSConfig = new(tls.Config)
+	} else if s.TLSConfig.CipherSuites != nil {
+		// If they already provided a CipherSuite list, return
+		// an error if it has a bad order or is missing
+		// ECDHE_RSA_WITH_AES_128_GCM_SHA256 or ECDHE_ECDSA_WITH_AES_128_GCM_SHA256.
+		haveRequired := false
+		sawBad := false
+		for i, cs := range s.TLSConfig.CipherSuites {
+			switch cs {
+			case tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				// Alternative MTI cipher to not discourage ECDSA-only servers.
+				// See http://golang.org/cl/30721 for further information.
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+				haveRequired = true
+			}
+			if isBadCipher(cs) {
+				sawBad = true
+			} else if sawBad {
+				return fmt.Errorf("http2: TLSConfig.CipherSuites index %d contains an HTTP/2-approved cipher suite (%#04x), but it comes after unapproved cipher suites. With this configuration, clients that don't support previous, approved cipher suites may be given an unapproved one and reject the connection.", i, cs)
+			}
+		}
+		if !haveRequired {
+			return fmt.Errorf("http2: TLSConfig.CipherSuites is missing an HTTP/2-required AES_128_GCM_SHA256 cipher.")
+		}
+	}
+
+	// Note: not setting MinVersion to tls.VersionTLS12,
+	// as we don't want to interfere with HTTP/1.1 traffic
+	// on the user's server. We enforce TLS 1.2 later once
+	// we accept a connection. Ideally this should be done
+	// during next-proto selection, but using TLS <1.2 with
+	// HTTP/2 is still the client's bug.
+
+	s.TLSConfig.PreferServerCipherSuites = true
+
+	haveNPN := false
+	for _, p := range s.TLSConfig.NextProtos {
+		if p == NextProtoTLS {
+			haveNPN = true
+			break
+		}
+	}
+	if !haveNPN {
+		s.TLSConfig.NextProtos = append(s.TLSConfig.NextProtos, NextProtoTLS)
+	}
+
+	if s.TLSNextProto == nil {
+		s.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){}
+	}
+	protoHandler := func(hs *http.Server, c *tls.Conn, h http.Handler) {
+		if testHookOnConn != nil {
+			testHookOnConn()
+		}
+		conf.ServeConn(c, &ServeConnOpts{
+			Handler:    h,
+			BaseConfig: hs,
+		})
+	}
+	s.TLSNextProto[NextProtoTLS] = protoHandler
+	return nil
+}
+
+// ServeConnOpts are options for the Server.ServeConn method.
+type ServeConnOpts struct {
+	// BaseConfig optionally sets the base configuration
+	// for values. If nil, defaults are used.
+	BaseConfig *http.Server
+
+	// Handler specifies which handler to use for processing
+	// requests. If nil, BaseConfig.Handler is us
