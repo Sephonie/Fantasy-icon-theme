@@ -59,4 +59,113 @@ const (
 var (
 	errClientDisconnected = errors.New("client disconnected")
 	errClosedBody         = errors.New("body closed by handler")
-	errHandlerComplete    = errors.New("http2: request body closed due to handler exit
+	errHandlerComplete    = errors.New("http2: request body closed due to handler exiting")
+	errStreamClosed       = errors.New("http2: stream closed")
+)
+
+var responseWriterStatePool = sync.Pool{
+	New: func() interface{} {
+		rws := &responseWriterState{}
+		rws.bw = bufio.NewWriterSize(chunkWriter{rws}, handlerChunkWriteSize)
+		return rws
+	},
+}
+
+// Test hooks.
+var (
+	testHookOnConn        func()
+	testHookGetServerConn func(*serverConn)
+	testHookOnPanicMu     *sync.Mutex // nil except in tests
+	testHookOnPanic       func(sc *serverConn, panicVal interface{}) (rePanic bool)
+)
+
+// Server is an HTTP/2 server.
+type Server struct {
+	// MaxHandlers limits the number of http.Handler ServeHTTP goroutines
+	// which may run at a time over all connections.
+	// Negative or zero no limit.
+	// TODO: implement
+	MaxHandlers int
+
+	// MaxConcurrentStreams optionally specifies the number of
+	// concurrent streams that each client may have open at a
+	// time. This is unrelated to the number of http.Handler goroutines
+	// which may be active globally, which is MaxHandlers.
+	// If zero, MaxConcurrentStreams defaults to at least 100, per
+	// the HTTP/2 spec's recommendations.
+	MaxConcurrentStreams uint32
+
+	// MaxReadFrameSize optionally specifies the largest frame
+	// this server is willing to read. A valid value is between
+	// 16k and 16M, inclusive. If zero or otherwise invalid, a
+	// default value is used.
+	MaxReadFrameSize uint32
+
+	// PermitProhibitedCipherSuites, if true, permits the use of
+	// cipher suites prohibited by the HTTP/2 spec.
+	PermitProhibitedCipherSuites bool
+
+	// IdleTimeout specifies how long until idle clients should be
+	// closed with a GOAWAY frame. PING frames are not considered
+	// activity for the purposes of IdleTimeout.
+	IdleTimeout time.Duration
+
+	// MaxUploadBufferPerConnection is the size of the initial flow
+	// control window for each connections. The HTTP/2 spec does not
+	// allow this to be smaller than 65535 or larger than 2^32-1.
+	// If the value is outside this range, a default value will be
+	// used instead.
+	MaxUploadBufferPerConnection int32
+
+	// MaxUploadBufferPerStream is the size of the initial flow control
+	// window for each stream. The HTTP/2 spec does not allow this to
+	// be larger than 2^32-1. If the value is zero or larger than the
+	// maximum, a default value will be used instead.
+	MaxUploadBufferPerStream int32
+
+	// NewWriteScheduler constructs a write scheduler for a connection.
+	// If nil, a default scheduler is chosen.
+	NewWriteScheduler func() WriteScheduler
+
+	// Internal state. This is a pointer (rather than embedded directly)
+	// so that we don't embed a Mutex in this struct, which will make the
+	// struct non-copyable, which might break some callers.
+	state *serverInternalState
+}
+
+func (s *Server) initialConnRecvWindowSize() int32 {
+	if s.MaxUploadBufferPerConnection > initialWindowSize {
+		return s.MaxUploadBufferPerConnection
+	}
+	return 1 << 20
+}
+
+func (s *Server) initialStreamRecvWindowSize() int32 {
+	if s.MaxUploadBufferPerStream > 0 {
+		return s.MaxUploadBufferPerStream
+	}
+	return 1 << 20
+}
+
+func (s *Server) maxReadFrameSize() uint32 {
+	if v := s.MaxReadFrameSize; v >= minMaxFrameSize && v <= maxFrameSize {
+		return v
+	}
+	return defaultMaxReadFrameSize
+}
+
+func (s *Server) maxConcurrentStreams() uint32 {
+	if v := s.MaxConcurrentStreams; v > 0 {
+		return v
+	}
+	return defaultMaxStreams
+}
+
+type serverInternalState struct {
+	mu          sync.Mutex
+	activeConns map[*serverConn]struct{}
+}
+
+func (s *serverInternalState) registerConn(sc *serverConn) {
+	if s == nil {
+		return // if the Server wa
