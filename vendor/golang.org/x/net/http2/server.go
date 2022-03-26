@@ -635,4 +635,148 @@ func isClosedConnError(err error) bool {
 	// Windows-specific stuff. Fix that and move this, once we
 	// have a way to bundle this into std's net/http somehow.
 	if runtime.GOOS == "windows" {
-		if oe, ok := err.(*net.OpError); ok && oe
+		if oe, ok := err.(*net.OpError); ok && oe.Op == "read" {
+			if se, ok := oe.Err.(*os.SyscallError); ok && se.Syscall == "wsarecv" {
+				const WSAECONNABORTED = 10053
+				const WSAECONNRESET = 10054
+				if n := errno(se.Err); n == WSAECONNRESET || n == WSAECONNABORTED {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (sc *serverConn) condlogf(err error, format string, args ...interface{}) {
+	if err == nil {
+		return
+	}
+	if err == io.EOF || err == io.ErrUnexpectedEOF || isClosedConnError(err) || err == errPrefaceTimeout {
+		// Boring, expected errors.
+		sc.vlogf(format, args...)
+	} else {
+		sc.logf(format, args...)
+	}
+}
+
+func (sc *serverConn) canonicalHeader(v string) string {
+	sc.serveG.check()
+	cv, ok := commonCanonHeader[v]
+	if ok {
+		return cv
+	}
+	cv, ok = sc.canonHeader[v]
+	if ok {
+		return cv
+	}
+	if sc.canonHeader == nil {
+		sc.canonHeader = make(map[string]string)
+	}
+	cv = http.CanonicalHeaderKey(v)
+	sc.canonHeader[v] = cv
+	return cv
+}
+
+type readFrameResult struct {
+	f   Frame // valid until readMore is called
+	err error
+
+	// readMore should be called once the consumer no longer needs or
+	// retains f. After readMore, f is invalid and more frames can be
+	// read.
+	readMore func()
+}
+
+// readFrames is the loop that reads incoming frames.
+// It takes care to only read one frame at a time, blocking until the
+// consumer is done with the frame.
+// It's run on its own goroutine.
+func (sc *serverConn) readFrames() {
+	gate := make(gate)
+	gateDone := gate.Done
+	for {
+		f, err := sc.framer.ReadFrame()
+		select {
+		case sc.readFrameCh <- readFrameResult{f, err, gateDone}:
+		case <-sc.doneServing:
+			return
+		}
+		select {
+		case <-gate:
+		case <-sc.doneServing:
+			return
+		}
+		if terminalReadFrameError(err) {
+			return
+		}
+	}
+}
+
+// frameWriteResult is the message passed from writeFrameAsync to the serve goroutine.
+type frameWriteResult struct {
+	wr  FrameWriteRequest // what was written (or attempted)
+	err error             // result of the writeFrame call
+}
+
+// writeFrameAsync runs in its own goroutine and writes a single frame
+// and then reports when it's done.
+// At most one goroutine can be running writeFrameAsync at a time per
+// serverConn.
+func (sc *serverConn) writeFrameAsync(wr FrameWriteRequest) {
+	err := wr.write.writeFrame(sc)
+	sc.wroteFrameCh <- frameWriteResult{wr, err}
+}
+
+func (sc *serverConn) closeAllStreamsOnConnClose() {
+	sc.serveG.check()
+	for _, st := range sc.streams {
+		sc.closeStream(st, errClientDisconnected)
+	}
+}
+
+func (sc *serverConn) stopShutdownTimer() {
+	sc.serveG.check()
+	if t := sc.shutdownTimer; t != nil {
+		t.Stop()
+	}
+}
+
+func (sc *serverConn) notePanic() {
+	// Note: this is for serverConn.serve panicking, not http.Handler code.
+	if testHookOnPanicMu != nil {
+		testHookOnPanicMu.Lock()
+		defer testHookOnPanicMu.Unlock()
+	}
+	if testHookOnPanic != nil {
+		if e := recover(); e != nil {
+			if testHookOnPanic(sc, e) {
+				panic(e)
+			}
+		}
+	}
+}
+
+func (sc *serverConn) serve() {
+	sc.serveG.check()
+	defer sc.notePanic()
+	defer sc.conn.Close()
+	defer sc.closeAllStreamsOnConnClose()
+	defer sc.stopShutdownTimer()
+	defer close(sc.doneServing) // unblocks handlers trying to send
+
+	if VerboseLogs {
+		sc.vlogf("http2: server connection from %v on %p", sc.conn.RemoteAddr(), sc.hs)
+	}
+
+	sc.writeFrame(FrameWriteRequest{
+		write: writeSettings{
+			{SettingMaxFrameSize, sc.srv.maxReadFrameSize()},
+			{SettingMaxConcurrentStreams, sc.advMaxStreams},
+			{SettingMaxHeaderListSize, sc.maxHeaderListSize()},
+			{SettingInitialWindowSize, uint32(sc.srv.initialStreamRecvWindowSize())},
+		},
+	})
+	sc.unackedSettings++
+
+	// Each connection starts with in
