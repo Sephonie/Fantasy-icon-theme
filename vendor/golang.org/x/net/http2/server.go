@@ -534,4 +534,105 @@ type stream struct {
 
 	// owned by serverConn's serve loop:
 	bodyBytes        int64   // body bytes seen so far
-	declBodyBytes    int64   // or -
+	declBodyBytes    int64   // or -1 if undeclared
+	flow             flow    // limits writing from Handler to client
+	inflow           flow    // what the client is allowed to POST/etc to us
+	parent           *stream // or nil
+	numTrailerValues int64
+	weight           uint8
+	state            streamState
+	resetQueued      bool        // RST_STREAM queued for write; set by sc.resetStream
+	gotTrailerHeader bool        // HEADER frame for trailers was seen
+	wroteHeaders     bool        // whether we wrote headers (not status 100)
+	writeDeadline    *time.Timer // nil if unused
+
+	trailer    http.Header // accumulated trailers
+	reqTrailer http.Header // handler's Request.Trailer
+}
+
+func (sc *serverConn) Framer() *Framer  { return sc.framer }
+func (sc *serverConn) CloseConn() error { return sc.conn.Close() }
+func (sc *serverConn) Flush() error     { return sc.bw.Flush() }
+func (sc *serverConn) HeaderEncoder() (*hpack.Encoder, *bytes.Buffer) {
+	return sc.hpackEncoder, &sc.headerWriteBuf
+}
+
+func (sc *serverConn) state(streamID uint32) (streamState, *stream) {
+	sc.serveG.check()
+	// http://tools.ietf.org/html/rfc7540#section-5.1
+	if st, ok := sc.streams[streamID]; ok {
+		return st.state, st
+	}
+	// "The first use of a new stream identifier implicitly closes all
+	// streams in the "idle" state that might have been initiated by
+	// that peer with a lower-valued stream identifier. For example, if
+	// a client sends a HEADERS frame on stream 7 without ever sending a
+	// frame on stream 5, then stream 5 transitions to the "closed"
+	// state when the first frame for stream 7 is sent or received."
+	if streamID%2 == 1 {
+		if streamID <= sc.maxClientStreamID {
+			return stateClosed, nil
+		}
+	} else {
+		if streamID <= sc.maxPushPromiseID {
+			return stateClosed, nil
+		}
+	}
+	return stateIdle, nil
+}
+
+// setConnState calls the net/http ConnState hook for this connection, if configured.
+// Note that the net/http package does StateNew and StateClosed for us.
+// There is currently no plan for StateHijacked or hijacking HTTP/2 connections.
+func (sc *serverConn) setConnState(state http.ConnState) {
+	if sc.hs.ConnState != nil {
+		sc.hs.ConnState(sc.conn, state)
+	}
+}
+
+func (sc *serverConn) vlogf(format string, args ...interface{}) {
+	if VerboseLogs {
+		sc.logf(format, args...)
+	}
+}
+
+func (sc *serverConn) logf(format string, args ...interface{}) {
+	if lg := sc.hs.ErrorLog; lg != nil {
+		lg.Printf(format, args...)
+	} else {
+		log.Printf(format, args...)
+	}
+}
+
+// errno returns v's underlying uintptr, else 0.
+//
+// TODO: remove this helper function once http2 can use build
+// tags. See comment in isClosedConnError.
+func errno(v error) uintptr {
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Uintptr {
+		return uintptr(rv.Uint())
+	}
+	return 0
+}
+
+// isClosedConnError reports whether err is an error from use of a closed
+// network connection.
+func isClosedConnError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// TODO: remove this string search and be more like the Windows
+	// case below. That might involve modifying the standard library
+	// to return better error types.
+	str := err.Error()
+	if strings.Contains(str, "use of closed network connection") {
+		return true
+	}
+
+	// TODO(bradfitz): x/tools/cmd/bundle doesn't really support
+	// build tags, so I can't make an http2_windows.go file with
+	// Windows-specific stuff. Fix that and move this, once we
+	// have a way to bundle this into std's net/http somehow.
+	if runtime.GOOS == "windows" {
+		if oe, ok := err.(*net.OpError); ok && oe
