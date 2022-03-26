@@ -374,4 +374,90 @@ func (s *Server) ServeConn(c net.Conn, opts *ServeConnOpts) {
 	// WINDOW_UPDATE shortly after sending SETTINGS.
 	sc.flow.add(initialWindowSize)
 	sc.inflow.add(initialWindowSize)
-	sc.hpackEncoder = hpack.NewEncoder(&sc.headerW
+	sc.hpackEncoder = hpack.NewEncoder(&sc.headerWriteBuf)
+
+	fr := NewFramer(sc.bw, c)
+	fr.ReadMetaHeaders = hpack.NewDecoder(initialHeaderTableSize, nil)
+	fr.MaxHeaderListSize = sc.maxHeaderListSize()
+	fr.SetMaxReadFrameSize(s.maxReadFrameSize())
+	sc.framer = fr
+
+	if tc, ok := c.(connectionStater); ok {
+		sc.tlsState = new(tls.ConnectionState)
+		*sc.tlsState = tc.ConnectionState()
+		// 9.2 Use of TLS Features
+		// An implementation of HTTP/2 over TLS MUST use TLS
+		// 1.2 or higher with the restrictions on feature set
+		// and cipher suite described in this section. Due to
+		// implementation limitations, it might not be
+		// possible to fail TLS negotiation. An endpoint MUST
+		// immediately terminate an HTTP/2 connection that
+		// does not meet the TLS requirements described in
+		// this section with a connection error (Section
+		// 5.4.1) of type INADEQUATE_SECURITY.
+		if sc.tlsState.Version < tls.VersionTLS12 {
+			sc.rejectConn(ErrCodeInadequateSecurity, "TLS version too low")
+			return
+		}
+
+		if sc.tlsState.ServerName == "" {
+			// Client must use SNI, but we don't enforce that anymore,
+			// since it was causing problems when connecting to bare IP
+			// addresses during development.
+			//
+			// TODO: optionally enforce? Or enforce at the time we receive
+			// a new request, and verify the the ServerName matches the :authority?
+			// But that precludes proxy situations, perhaps.
+			//
+			// So for now, do nothing here again.
+		}
+
+		if !s.PermitProhibitedCipherSuites && isBadCipher(sc.tlsState.CipherSuite) {
+			// "Endpoints MAY choose to generate a connection error
+			// (Section 5.4.1) of type INADEQUATE_SECURITY if one of
+			// the prohibited cipher suites are negotiated."
+			//
+			// We choose that. In my opinion, the spec is weak
+			// here. It also says both parties must support at least
+			// TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 so there's no
+			// excuses here. If we really must, we could allow an
+			// "AllowInsecureWeakCiphers" option on the server later.
+			// Let's see how it plays out first.
+			sc.rejectConn(ErrCodeInadequateSecurity, fmt.Sprintf("Prohibited TLS 1.2 Cipher Suite: %x", sc.tlsState.CipherSuite))
+			return
+		}
+	}
+
+	if hook := testHookGetServerConn; hook != nil {
+		hook(sc)
+	}
+	sc.serve()
+}
+
+func (sc *serverConn) rejectConn(err ErrCode, debug string) {
+	sc.vlogf("http2: server rejecting conn: %v, %s", err, debug)
+	// ignoring errors. hanging up anyway.
+	sc.framer.WriteGoAway(0, err, []byte(debug))
+	sc.bw.Flush()
+	sc.conn.Close()
+}
+
+type serverConn struct {
+	// Immutable:
+	srv              *Server
+	hs               *http.Server
+	conn             net.Conn
+	bw               *bufferedWriter // writing to conn
+	handler          http.Handler
+	baseCtx          contextContext
+	framer           *Framer
+	doneServing      chan struct{}          // closed when serverConn.serve ends
+	readFrameCh      chan readFrameResult   // written by serverConn.readFrames
+	wantWriteFrameCh chan FrameWriteRequest // from handlers -> serve
+	wroteFrameCh     chan frameWriteResult  // from writeFrameAsync -> serve, tickles more frame writes
+	bodyReadCh       chan bodyReadMsg       // from handlers -> serve
+	serveMsgCh       chan interface{}       // misc messages & code to send to / run on the serve loop
+	flow             flow                   // conn-wide (not stream-specific) outbound flow control
+	inflow           flow                   // conn-wide inbound flow control
+	tlsState         *tls.ConnectionState   // shared by all handlers, like net/http
+	remoteAddrS
