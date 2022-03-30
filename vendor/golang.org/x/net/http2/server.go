@@ -779,4 +779,125 @@ func (sc *serverConn) serve() {
 	})
 	sc.unackedSettings++
 
-	// Each connection starts with in
+	// Each connection starts with intialWindowSize inflow tokens.
+	// If a higher value is configured, we add more tokens.
+	if diff := sc.srv.initialConnRecvWindowSize() - initialWindowSize; diff > 0 {
+		sc.sendWindowUpdate(nil, int(diff))
+	}
+
+	if err := sc.readPreface(); err != nil {
+		sc.condlogf(err, "http2: server: error reading preface from client %v: %v", sc.conn.RemoteAddr(), err)
+		return
+	}
+	// Now that we've got the preface, get us out of the
+	// "StateNew" state. We can't go directly to idle, though.
+	// Active means we read some data and anticipate a request. We'll
+	// do another Active when we get a HEADERS frame.
+	sc.setConnState(http.StateActive)
+	sc.setConnState(http.StateIdle)
+
+	if sc.srv.IdleTimeout != 0 {
+		sc.idleTimer = time.AfterFunc(sc.srv.IdleTimeout, sc.onIdleTimer)
+		defer sc.idleTimer.Stop()
+	}
+
+	go sc.readFrames() // closed by defer sc.conn.Close above
+
+	settingsTimer := time.AfterFunc(firstSettingsTimeout, sc.onSettingsTimer)
+	defer settingsTimer.Stop()
+
+	loopNum := 0
+	for {
+		loopNum++
+		select {
+		case wr := <-sc.wantWriteFrameCh:
+			if se, ok := wr.write.(StreamError); ok {
+				sc.resetStream(se)
+				break
+			}
+			sc.writeFrame(wr)
+		case res := <-sc.wroteFrameCh:
+			sc.wroteFrame(res)
+		case res := <-sc.readFrameCh:
+			if !sc.processFrameFromReader(res) {
+				return
+			}
+			res.readMore()
+			if settingsTimer != nil {
+				settingsTimer.Stop()
+				settingsTimer = nil
+			}
+		case m := <-sc.bodyReadCh:
+			sc.noteBodyRead(m.st, m.n)
+		case msg := <-sc.serveMsgCh:
+			switch v := msg.(type) {
+			case func(int):
+				v(loopNum) // for testing
+			case *serverMessage:
+				switch v {
+				case settingsTimerMsg:
+					sc.logf("timeout waiting for SETTINGS frames from %v", sc.conn.RemoteAddr())
+					return
+				case idleTimerMsg:
+					sc.vlogf("connection is idle")
+					sc.goAway(ErrCodeNo)
+				case shutdownTimerMsg:
+					sc.vlogf("GOAWAY close timer fired; closing conn from %v", sc.conn.RemoteAddr())
+					return
+				case gracefulShutdownMsg:
+					sc.startGracefulShutdownInternal()
+				default:
+					panic("unknown timer")
+				}
+			case *startPushRequest:
+				sc.startPush(v)
+			default:
+				panic(fmt.Sprintf("unexpected type %T", v))
+			}
+		}
+
+		// Start the shutdown timer after sending a GOAWAY. When sending GOAWAY
+		// with no error code (graceful shutdown), don't start the timer until
+		// all open streams have been completed.
+		sentGoAway := sc.inGoAway && !sc.needToSendGoAway && !sc.writingFrame
+		gracefulShutdownComplete := sc.goAwayCode == ErrCodeNo && sc.curOpenStreams() == 0
+		if sentGoAway && sc.shutdownTimer == nil && (sc.goAwayCode != ErrCodeNo || gracefulShutdownComplete) {
+			sc.shutDownIn(goAwayTimeout)
+		}
+	}
+}
+
+func (sc *serverConn) awaitGracefulShutdown(sharedCh <-chan struct{}, privateCh chan struct{}) {
+	select {
+	case <-sc.doneServing:
+	case <-sharedCh:
+		close(privateCh)
+	}
+}
+
+type serverMessage int
+
+// Message values sent to serveMsgCh.
+var (
+	settingsTimerMsg    = new(serverMessage)
+	idleTimerMsg        = new(serverMessage)
+	shutdownTimerMsg    = new(serverMessage)
+	gracefulShutdownMsg = new(serverMessage)
+)
+
+func (sc *serverConn) onSettingsTimer() { sc.sendServeMsg(settingsTimerMsg) }
+func (sc *serverConn) onIdleTimer()     { sc.sendServeMsg(idleTimerMsg) }
+func (sc *serverConn) onShutdownTimer() { sc.sendServeMsg(shutdownTimerMsg) }
+
+func (sc *serverConn) sendServeMsg(msg interface{}) {
+	sc.serveG.checkNotOn() // NOT
+	select {
+	case sc.serveMsgCh <- msg:
+	case <-sc.doneServing:
+	}
+}
+
+var errPrefaceTimeout = errors.New("timeout waiting for client preface")
+
+// readPreface reads the ClientPreface greeting from the peer or
+// returns errPrefaceTimeout on timeout, or an error if the greetin
