@@ -900,4 +900,122 @@ func (sc *serverConn) sendServeMsg(msg interface{}) {
 var errPrefaceTimeout = errors.New("timeout waiting for client preface")
 
 // readPreface reads the ClientPreface greeting from the peer or
-// returns errPrefaceTimeout on timeout, or an error if the greetin
+// returns errPrefaceTimeout on timeout, or an error if the greeting
+// is invalid.
+func (sc *serverConn) readPreface() error {
+	errc := make(chan error, 1)
+	go func() {
+		// Read the client preface
+		buf := make([]byte, len(ClientPreface))
+		if _, err := io.ReadFull(sc.conn, buf); err != nil {
+			errc <- err
+		} else if !bytes.Equal(buf, clientPreface) {
+			errc <- fmt.Errorf("bogus greeting %q", buf)
+		} else {
+			errc <- nil
+		}
+	}()
+	timer := time.NewTimer(prefaceTimeout) // TODO: configurable on *Server?
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return errPrefaceTimeout
+	case err := <-errc:
+		if err == nil {
+			if VerboseLogs {
+				sc.vlogf("http2: server: client %v said hello", sc.conn.RemoteAddr())
+			}
+		}
+		return err
+	}
+}
+
+var errChanPool = sync.Pool{
+	New: func() interface{} { return make(chan error, 1) },
+}
+
+var writeDataPool = sync.Pool{
+	New: func() interface{} { return new(writeData) },
+}
+
+// writeDataFromHandler writes DATA response frames from a handler on
+// the given stream.
+func (sc *serverConn) writeDataFromHandler(stream *stream, data []byte, endStream bool) error {
+	ch := errChanPool.Get().(chan error)
+	writeArg := writeDataPool.Get().(*writeData)
+	*writeArg = writeData{stream.id, data, endStream}
+	err := sc.writeFrameFromHandler(FrameWriteRequest{
+		write:  writeArg,
+		stream: stream,
+		done:   ch,
+	})
+	if err != nil {
+		return err
+	}
+	var frameWriteDone bool // the frame write is done (successfully or not)
+	select {
+	case err = <-ch:
+		frameWriteDone = true
+	case <-sc.doneServing:
+		return errClientDisconnected
+	case <-stream.cw:
+		// If both ch and stream.cw were ready (as might
+		// happen on the final Write after an http.Handler
+		// ends), prefer the write result. Otherwise this
+		// might just be us successfully closing the stream.
+		// The writeFrameAsync and serve goroutines guarantee
+		// that the ch send will happen before the stream.cw
+		// close.
+		select {
+		case err = <-ch:
+			frameWriteDone = true
+		default:
+			return errStreamClosed
+		}
+	}
+	errChanPool.Put(ch)
+	if frameWriteDone {
+		writeDataPool.Put(writeArg)
+	}
+	return err
+}
+
+// writeFrameFromHandler sends wr to sc.wantWriteFrameCh, but aborts
+// if the connection has gone away.
+//
+// This must not be run from the serve goroutine itself, else it might
+// deadlock writing to sc.wantWriteFrameCh (which is only mildly
+// buffered and is read by serve itself). If you're on the serve
+// goroutine, call writeFrame instead.
+func (sc *serverConn) writeFrameFromHandler(wr FrameWriteRequest) error {
+	sc.serveG.checkNotOn() // NOT
+	select {
+	case sc.wantWriteFrameCh <- wr:
+		return nil
+	case <-sc.doneServing:
+		// Serve loop is gone.
+		// Client has closed their connection to the server.
+		return errClientDisconnected
+	}
+}
+
+// writeFrame schedules a frame to write and sends it if there's nothing
+// already being written.
+//
+// There is no pushback here (the serve goroutine never blocks). It's
+// the http.Handlers that block, waiting for their previous frames to
+// make it onto the wire
+//
+// If you're not on the serve goroutine, use writeFrameFromHandler instead.
+func (sc *serverConn) writeFrame(wr FrameWriteRequest) {
+	sc.serveG.check()
+
+	// If true, wr will not be written and wr.done will not be signaled.
+	var ignoreWrite bool
+
+	// We are not allowed to write frames on closed streams. RFC 7540 Section
+	// 5.1.1 says: "An endpoint MUST NOT send frames other than PRIORITY on
+	// a closed stream." Our server never sends PRIORITY, so that exception
+	// does not apply.
+	//
+	// The serverConn might close an open stream while the 
