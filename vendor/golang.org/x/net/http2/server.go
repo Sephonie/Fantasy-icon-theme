@@ -1232,4 +1232,123 @@ func (sc *serverConn) startGracefulShutdown() {
 // After sending GOAWAY, the connection will close after goAwayTimeout.
 // If we close the connection immediately after sending GOAWAY, there may
 // be unsent data in our kernel receive buffer, which will cause the kernel
-// to
+// to send a TCP RST on close() instead of a FIN. This RST will abort the
+// connection immediately, whether or not the client had received the GOAWAY.
+//
+// Ideally we should delay for at least 1 RTT + epsilon so the client has
+// a chance to read the GOAWAY and stop sending messages. Measuring RTT
+// is hard, so we approximate with 1 second. See golang.org/issue/18701.
+//
+// This is a var so it can be shorter in tests, where all requests uses the
+// loopback interface making the expected RTT very small.
+//
+// TODO: configurable?
+var goAwayTimeout = 1 * time.Second
+
+func (sc *serverConn) startGracefulShutdownInternal() {
+	sc.goAway(ErrCodeNo)
+}
+
+func (sc *serverConn) goAway(code ErrCode) {
+	sc.serveG.check()
+	if sc.inGoAway {
+		return
+	}
+	sc.inGoAway = true
+	sc.needToSendGoAway = true
+	sc.goAwayCode = code
+	sc.scheduleFrameWrite()
+}
+
+func (sc *serverConn) shutDownIn(d time.Duration) {
+	sc.serveG.check()
+	sc.shutdownTimer = time.AfterFunc(d, sc.onShutdownTimer)
+}
+
+func (sc *serverConn) resetStream(se StreamError) {
+	sc.serveG.check()
+	sc.writeFrame(FrameWriteRequest{write: se})
+	if st, ok := sc.streams[se.StreamID]; ok {
+		st.resetQueued = true
+	}
+}
+
+// processFrameFromReader processes the serve loop's read from readFrameCh from the
+// frame-reading goroutine.
+// processFrameFromReader returns whether the connection should be kept open.
+func (sc *serverConn) processFrameFromReader(res readFrameResult) bool {
+	sc.serveG.check()
+	err := res.err
+	if err != nil {
+		if err == ErrFrameTooLarge {
+			sc.goAway(ErrCodeFrameSize)
+			return true // goAway will close the loop
+		}
+		clientGone := err == io.EOF || err == io.ErrUnexpectedEOF || isClosedConnError(err)
+		if clientGone {
+			// TODO: could we also get into this state if
+			// the peer does a half close
+			// (e.g. CloseWrite) because they're done
+			// sending frames but they're still wanting
+			// our open replies?  Investigate.
+			// TODO: add CloseWrite to crypto/tls.Conn first
+			// so we have a way to test this? I suppose
+			// just for testing we could have a non-TLS mode.
+			return false
+		}
+	} else {
+		f := res.f
+		if VerboseLogs {
+			sc.vlogf("http2: server read frame %v", summarizeFrame(f))
+		}
+		err = sc.processFrame(f)
+		if err == nil {
+			return true
+		}
+	}
+
+	switch ev := err.(type) {
+	case StreamError:
+		sc.resetStream(ev)
+		return true
+	case goAwayFlowError:
+		sc.goAway(ErrCodeFlowControl)
+		return true
+	case ConnectionError:
+		sc.logf("http2: server connection error from %v: %v", sc.conn.RemoteAddr(), ev)
+		sc.goAway(ErrCode(ev))
+		return true // goAway will handle shutdown
+	default:
+		if res.err != nil {
+			sc.vlogf("http2: server closing client connection; error reading frame from client %s: %v", sc.conn.RemoteAddr(), err)
+		} else {
+			sc.logf("http2: server closing client connection: %v", err)
+		}
+		return false
+	}
+}
+
+func (sc *serverConn) processFrame(f Frame) error {
+	sc.serveG.check()
+
+	// First frame received must be SETTINGS.
+	if !sc.sawFirstSettings {
+		if _, ok := f.(*SettingsFrame); !ok {
+			return ConnectionError(ErrCodeProtocol)
+		}
+		sc.sawFirstSettings = true
+	}
+
+	switch f := f.(type) {
+	case *SettingsFrame:
+		return sc.processSettings(f)
+	case *MetaHeadersFrame:
+		return sc.processHeaders(f)
+	case *WindowUpdateFrame:
+		return sc.processWindowUpdate(f)
+	case *PingFrame:
+		return sc.processPing(f)
+	case *DataFrame:
+		return sc.processData(f)
+	case *RSTStreamFrame:
+		
