@@ -1018,4 +1018,109 @@ func (sc *serverConn) writeFrame(wr FrameWriteRequest) {
 	// a closed stream." Our server never sends PRIORITY, so that exception
 	// does not apply.
 	//
-	// The serverConn might close an open stream while the 
+	// The serverConn might close an open stream while the stream's handler
+	// is still running. For example, the server might close a stream when it
+	// receives bad data from the client. If this happens, the handler might
+	// attempt to write a frame after the stream has been closed (since the
+	// handler hasn't yet been notified of the close). In this case, we simply
+	// ignore the frame. The handler will notice that the stream is closed when
+	// it waits for the frame to be written.
+	//
+	// As an exception to this rule, we allow sending RST_STREAM after close.
+	// This allows us to immediately reject new streams without tracking any
+	// state for those streams (except for the queued RST_STREAM frame). This
+	// may result in duplicate RST_STREAMs in some cases, but the client should
+	// ignore those.
+	if wr.StreamID() != 0 {
+		_, isReset := wr.write.(StreamError)
+		if state, _ := sc.state(wr.StreamID()); state == stateClosed && !isReset {
+			ignoreWrite = true
+		}
+	}
+
+	// Don't send a 100-continue response if we've already sent headers.
+	// See golang.org/issue/14030.
+	switch wr.write.(type) {
+	case *writeResHeaders:
+		wr.stream.wroteHeaders = true
+	case write100ContinueHeadersFrame:
+		if wr.stream.wroteHeaders {
+			// We do not need to notify wr.done because this frame is
+			// never written with wr.done != nil.
+			if wr.done != nil {
+				panic("wr.done != nil for write100ContinueHeadersFrame")
+			}
+			ignoreWrite = true
+		}
+	}
+
+	if !ignoreWrite {
+		sc.writeSched.Push(wr)
+	}
+	sc.scheduleFrameWrite()
+}
+
+// startFrameWrite starts a goroutine to write wr (in a separate
+// goroutine since that might block on the network), and updates the
+// serve goroutine's state about the world, updated from info in wr.
+func (sc *serverConn) startFrameWrite(wr FrameWriteRequest) {
+	sc.serveG.check()
+	if sc.writingFrame {
+		panic("internal error: can only be writing one frame at a time")
+	}
+
+	st := wr.stream
+	if st != nil {
+		switch st.state {
+		case stateHalfClosedLocal:
+			switch wr.write.(type) {
+			case StreamError, handlerPanicRST, writeWindowUpdate:
+				// RFC 7540 Section 5.1 allows sending RST_STREAM, PRIORITY, and WINDOW_UPDATE
+				// in this state. (We never send PRIORITY from the server, so that is not checked.)
+			default:
+				panic(fmt.Sprintf("internal error: attempt to send frame on a half-closed-local stream: %v", wr))
+			}
+		case stateClosed:
+			panic(fmt.Sprintf("internal error: attempt to send frame on a closed stream: %v", wr))
+		}
+	}
+	if wpp, ok := wr.write.(*writePushPromise); ok {
+		var err error
+		wpp.promisedID, err = wpp.allocatePromisedID()
+		if err != nil {
+			sc.writingFrameAsync = false
+			wr.replyToWriter(err)
+			return
+		}
+	}
+
+	sc.writingFrame = true
+	sc.needsFrameFlush = true
+	if wr.write.staysWithinBuffer(sc.bw.Available()) {
+		sc.writingFrameAsync = false
+		err := wr.write.writeFrame(sc)
+		sc.wroteFrame(frameWriteResult{wr, err})
+	} else {
+		sc.writingFrameAsync = true
+		go sc.writeFrameAsync(wr)
+	}
+}
+
+// errHandlerPanicked is the error given to any callers blocked in a read from
+// Request.Body when the main goroutine panics. Since most handlers read in the
+// the main ServeHTTP goroutine, this will show up rarely.
+var errHandlerPanicked = errors.New("http2: handler panicked")
+
+// wroteFrame is called on the serve goroutine with the result of
+// whatever happened on writeFrameAsync.
+func (sc *serverConn) wroteFrame(res frameWriteResult) {
+	sc.serveG.check()
+	if !sc.writingFrame {
+		panic("internal error: expected to be already writing a frame")
+	}
+	sc.writingFrame = false
+	sc.writingFrameAsync = false
+
+	wr := res.wr
+
+	i
