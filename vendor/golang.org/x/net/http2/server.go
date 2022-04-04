@@ -1581,4 +1581,117 @@ func (sc *serverConn) processData(f *DataFrame) error {
 		// done writing). Try to stop the client from sending
 		// more DATA.
 
-		
+		// But still enforce their connection-level flow control,
+		// and return any flow control bytes since we're not going
+		// to consume them.
+		if sc.inflow.available() < int32(f.Length) {
+			return streamError(id, ErrCodeFlowControl)
+		}
+		// Deduct the flow control from inflow, since we're
+		// going to immediately add it back in
+		// sendWindowUpdate, which also schedules sending the
+		// frames.
+		sc.inflow.take(int32(f.Length))
+		sc.sendWindowUpdate(nil, int(f.Length)) // conn-level
+
+		if st != nil && st.resetQueued {
+			// Already have a stream error in flight. Don't send another.
+			return nil
+		}
+		return streamError(id, ErrCodeStreamClosed)
+	}
+	if st.body == nil {
+		panic("internal error: should have a body in this state")
+	}
+
+	// Sender sending more than they'd declared?
+	if st.declBodyBytes != -1 && st.bodyBytes+int64(len(data)) > st.declBodyBytes {
+		st.body.CloseWithError(fmt.Errorf("sender tried to send more than declared Content-Length of %d bytes", st.declBodyBytes))
+		return streamError(id, ErrCodeStreamClosed)
+	}
+	if f.Length > 0 {
+		// Check whether the client has flow control quota.
+		if st.inflow.available() < int32(f.Length) {
+			return streamError(id, ErrCodeFlowControl)
+		}
+		st.inflow.take(int32(f.Length))
+
+		if len(data) > 0 {
+			wrote, err := st.body.Write(data)
+			if err != nil {
+				return streamError(id, ErrCodeStreamClosed)
+			}
+			if wrote != len(data) {
+				panic("internal error: bad Writer")
+			}
+			st.bodyBytes += int64(len(data))
+		}
+
+		// Return any padded flow control now, since we won't
+		// refund it later on body reads.
+		if pad := int32(f.Length) - int32(len(data)); pad > 0 {
+			sc.sendWindowUpdate32(nil, pad)
+			sc.sendWindowUpdate32(st, pad)
+		}
+	}
+	if f.StreamEnded() {
+		st.endStream()
+	}
+	return nil
+}
+
+func (sc *serverConn) processGoAway(f *GoAwayFrame) error {
+	sc.serveG.check()
+	if f.ErrCode != ErrCodeNo {
+		sc.logf("http2: received GOAWAY %+v, starting graceful shutdown", f)
+	} else {
+		sc.vlogf("http2: received GOAWAY %+v, starting graceful shutdown", f)
+	}
+	sc.startGracefulShutdownInternal()
+	// http://tools.ietf.org/html/rfc7540#section-6.8
+	// We should not create any new streams, which means we should disable push.
+	sc.pushEnabled = false
+	return nil
+}
+
+// isPushed reports whether the stream is server-initiated.
+func (st *stream) isPushed() bool {
+	return st.id%2 == 0
+}
+
+// endStream closes a Request.Body's pipe. It is called when a DATA
+// frame says a request body is over (or after trailers).
+func (st *stream) endStream() {
+	sc := st.sc
+	sc.serveG.check()
+
+	if st.declBodyBytes != -1 && st.declBodyBytes != st.bodyBytes {
+		st.body.CloseWithError(fmt.Errorf("request declared a Content-Length of %d but only wrote %d bytes",
+			st.declBodyBytes, st.bodyBytes))
+	} else {
+		st.body.closeWithErrorAndCode(io.EOF, st.copyTrailersToHandlerRequest)
+		st.body.CloseWithError(io.EOF)
+	}
+	st.state = stateHalfClosedRemote
+}
+
+// copyTrailersToHandlerRequest is run in the Handler's goroutine in
+// its Request.Body.Read just before it gets io.EOF.
+func (st *stream) copyTrailersToHandlerRequest() {
+	for k, vv := range st.trailer {
+		if _, ok := st.reqTrailer[k]; ok {
+			// Only copy it over it was pre-declared.
+			st.reqTrailer[k] = vv
+		}
+	}
+}
+
+// onWriteTimeout is run on its own goroutine (from time.AfterFunc)
+// when the stream's WriteTimeout has fired.
+func (st *stream) onWriteTimeout() {
+	st.sc.writeFrameFromHandler(FrameWriteRequest{write: streamError(st.id, ErrCodeInternal)})
+}
+
+func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
+	sc.serveG.check()
+	id :
