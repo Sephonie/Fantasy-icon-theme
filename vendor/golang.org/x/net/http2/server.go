@@ -1470,4 +1470,115 @@ func (sc *serverConn) closeStream(st *stream, err error) {
 
 		p.CloseWithError(err)
 	}
-	st.cw.Close() // signals Handler
+	st.cw.Close() // signals Handler's CloseNotifier, unblocks writes, etc
+	sc.writeSched.CloseStream(st.id)
+}
+
+func (sc *serverConn) processSettings(f *SettingsFrame) error {
+	sc.serveG.check()
+	if f.IsAck() {
+		sc.unackedSettings--
+		if sc.unackedSettings < 0 {
+			// Why is the peer ACKing settings we never sent?
+			// The spec doesn't mention this case, but
+			// hang up on them anyway.
+			return ConnectionError(ErrCodeProtocol)
+		}
+		return nil
+	}
+	if err := f.ForeachSetting(sc.processSetting); err != nil {
+		return err
+	}
+	sc.needToSendSettingsAck = true
+	sc.scheduleFrameWrite()
+	return nil
+}
+
+func (sc *serverConn) processSetting(s Setting) error {
+	sc.serveG.check()
+	if err := s.Valid(); err != nil {
+		return err
+	}
+	if VerboseLogs {
+		sc.vlogf("http2: server processing setting %v", s)
+	}
+	switch s.ID {
+	case SettingHeaderTableSize:
+		sc.headerTableSize = s.Val
+		sc.hpackEncoder.SetMaxDynamicTableSize(s.Val)
+	case SettingEnablePush:
+		sc.pushEnabled = s.Val != 0
+	case SettingMaxConcurrentStreams:
+		sc.clientMaxStreams = s.Val
+	case SettingInitialWindowSize:
+		return sc.processSettingInitialWindowSize(s.Val)
+	case SettingMaxFrameSize:
+		sc.maxFrameSize = int32(s.Val) // the maximum valid s.Val is < 2^31
+	case SettingMaxHeaderListSize:
+		sc.peerMaxHeaderListSize = s.Val
+	default:
+		// Unknown setting: "An endpoint that receives a SETTINGS
+		// frame with any unknown or unsupported identifier MUST
+		// ignore that setting."
+		if VerboseLogs {
+			sc.vlogf("http2: server ignoring unknown setting %v", s)
+		}
+	}
+	return nil
+}
+
+func (sc *serverConn) processSettingInitialWindowSize(val uint32) error {
+	sc.serveG.check()
+	// Note: val already validated to be within range by
+	// processSetting's Valid call.
+
+	// "A SETTINGS frame can alter the initial flow control window
+	// size for all current streams. When the value of
+	// SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST
+	// adjust the size of all stream flow control windows that it
+	// maintains by the difference between the new value and the
+	// old value."
+	old := sc.initialStreamSendWindowSize
+	sc.initialStreamSendWindowSize = int32(val)
+	growth := int32(val) - old // may be negative
+	for _, st := range sc.streams {
+		if !st.flow.add(growth) {
+			// 6.9.2 Initial Flow Control Window Size
+			// "An endpoint MUST treat a change to
+			// SETTINGS_INITIAL_WINDOW_SIZE that causes any flow
+			// control window to exceed the maximum size as a
+			// connection error (Section 5.4.1) of type
+			// FLOW_CONTROL_ERROR."
+			return ConnectionError(ErrCodeFlowControl)
+		}
+	}
+	return nil
+}
+
+func (sc *serverConn) processData(f *DataFrame) error {
+	sc.serveG.check()
+	if sc.inGoAway && sc.goAwayCode != ErrCodeNo {
+		return nil
+	}
+	data := f.Data()
+
+	// "If a DATA frame is received whose stream is not in "open"
+	// or "half closed (local)" state, the recipient MUST respond
+	// with a stream error (Section 5.4.2) of type STREAM_CLOSED."
+	id := f.Header().StreamID
+	state, st := sc.state(id)
+	if id == 0 || state == stateIdle {
+		// Section 5.1: "Receiving any frame other than HEADERS
+		// or PRIORITY on a stream in this state MUST be
+		// treated as a connection error (Section 5.4.1) of
+		// type PROTOCOL_ERROR."
+		return ConnectionError(ErrCodeProtocol)
+	}
+	if st == nil || state != stateOpen || st.gotTrailerHeader || st.resetQueued {
+		// This includes sending a RST_STREAM if the stream is
+		// in stateHalfClosedLocal (which currently means that
+		// the http.Handler returned, so it's done reading &
+		// done writing). Try to stop the client from sending
+		// more DATA.
+
+		
