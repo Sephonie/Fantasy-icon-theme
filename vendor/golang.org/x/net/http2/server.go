@@ -1694,4 +1694,113 @@ func (st *stream) onWriteTimeout() {
 
 func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
 	sc.serveG.check()
-	id :
+	id := f.StreamID
+	if sc.inGoAway {
+		// Ignore.
+		return nil
+	}
+	// http://tools.ietf.org/html/rfc7540#section-5.1.1
+	// Streams initiated by a client MUST use odd-numbered stream
+	// identifiers. [...] An endpoint that receives an unexpected
+	// stream identifier MUST respond with a connection error
+	// (Section 5.4.1) of type PROTOCOL_ERROR.
+	if id%2 != 1 {
+		return ConnectionError(ErrCodeProtocol)
+	}
+	// A HEADERS frame can be used to create a new stream or
+	// send a trailer for an open one. If we already have a stream
+	// open, let it process its own HEADERS frame (trailers at this
+	// point, if it's valid).
+	if st := sc.streams[f.StreamID]; st != nil {
+		if st.resetQueued {
+			// We're sending RST_STREAM to close the stream, so don't bother
+			// processing this frame.
+			return nil
+		}
+		return st.processTrailerHeaders(f)
+	}
+
+	// [...] The identifier of a newly established stream MUST be
+	// numerically greater than all streams that the initiating
+	// endpoint has opened or reserved. [...]  An endpoint that
+	// receives an unexpected stream identifier MUST respond with
+	// a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+	if id <= sc.maxClientStreamID {
+		return ConnectionError(ErrCodeProtocol)
+	}
+	sc.maxClientStreamID = id
+
+	if sc.idleTimer != nil {
+		sc.idleTimer.Stop()
+	}
+
+	// http://tools.ietf.org/html/rfc7540#section-5.1.2
+	// [...] Endpoints MUST NOT exceed the limit set by their peer. An
+	// endpoint that receives a HEADERS frame that causes their
+	// advertised concurrent stream limit to be exceeded MUST treat
+	// this as a stream error (Section 5.4.2) of type PROTOCOL_ERROR
+	// or REFUSED_STREAM.
+	if sc.curClientStreams+1 > sc.advMaxStreams {
+		if sc.unackedSettings == 0 {
+			// They should know better.
+			return streamError(id, ErrCodeProtocol)
+		}
+		// Assume it's a network race, where they just haven't
+		// received our last SETTINGS update. But actually
+		// this can't happen yet, because we don't yet provide
+		// a way for users to adjust server parameters at
+		// runtime.
+		return streamError(id, ErrCodeRefusedStream)
+	}
+
+	initialState := stateOpen
+	if f.StreamEnded() {
+		initialState = stateHalfClosedRemote
+	}
+	st := sc.newStream(id, 0, initialState)
+
+	if f.HasPriority() {
+		if err := checkPriority(f.StreamID, f.Priority); err != nil {
+			return err
+		}
+		sc.writeSched.AdjustStream(st.id, f.Priority)
+	}
+
+	rw, req, err := sc.newWriterAndRequest(st, f)
+	if err != nil {
+		return err
+	}
+	st.reqTrailer = req.Trailer
+	if st.reqTrailer != nil {
+		st.trailer = make(http.Header)
+	}
+	st.body = req.Body.(*requestBody).pipe // may be nil
+	st.declBodyBytes = req.ContentLength
+
+	handler := sc.handler.ServeHTTP
+	if f.Truncated {
+		// Their header list was too long. Send a 431 error.
+		handler = handleHeaderListTooLong
+	} else if err := checkValidHTTP2RequestHeaders(req.Header); err != nil {
+		handler = new400Handler(err)
+	}
+
+	// The net/http package sets the read deadline from the
+	// http.Server.ReadTimeout during the TLS handshake, but then
+	// passes the connection off to us with the deadline already
+	// set. Disarm it here after the request headers are read,
+	// similar to how the http1 server works. Here it's
+	// technically more like the http1 Server's ReadHeaderTimeout
+	// (in Go 1.8), though. That's a more sane option anyway.
+	if sc.hs.ReadTimeout != 0 {
+		sc.conn.SetReadDeadline(time.Time{})
+	}
+
+	go sc.runHandler(rw, req, handler)
+	return nil
+}
+
+func (st *stream) processTrailerHeaders(f *MetaHeadersFrame) error {
+	sc := st.sc
+	sc.serveG.check()
+	if st.gotT
