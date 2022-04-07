@@ -1803,4 +1803,122 @@ func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
 func (st *stream) processTrailerHeaders(f *MetaHeadersFrame) error {
 	sc := st.sc
 	sc.serveG.check()
-	if st.gotT
+	if st.gotTrailerHeader {
+		return ConnectionError(ErrCodeProtocol)
+	}
+	st.gotTrailerHeader = true
+	if !f.StreamEnded() {
+		return streamError(st.id, ErrCodeProtocol)
+	}
+
+	if len(f.PseudoFields()) > 0 {
+		return streamError(st.id, ErrCodeProtocol)
+	}
+	if st.trailer != nil {
+		for _, hf := range f.RegularFields() {
+			key := sc.canonicalHeader(hf.Name)
+			if !ValidTrailerHeader(key) {
+				// TODO: send more details to the peer somehow. But http2 has
+				// no way to send debug data at a stream level. Discuss with
+				// HTTP folk.
+				return streamError(st.id, ErrCodeProtocol)
+			}
+			st.trailer[key] = append(st.trailer[key], hf.Value)
+		}
+	}
+	st.endStream()
+	return nil
+}
+
+func checkPriority(streamID uint32, p PriorityParam) error {
+	if streamID == p.StreamDep {
+		// Section 5.3.1: "A stream cannot depend on itself. An endpoint MUST treat
+		// this as a stream error (Section 5.4.2) of type PROTOCOL_ERROR."
+		// Section 5.3.3 says that a stream can depend on one of its dependencies,
+		// so it's only self-dependencies that are forbidden.
+		return streamError(streamID, ErrCodeProtocol)
+	}
+	return nil
+}
+
+func (sc *serverConn) processPriority(f *PriorityFrame) error {
+	if sc.inGoAway {
+		return nil
+	}
+	if err := checkPriority(f.StreamID, f.PriorityParam); err != nil {
+		return err
+	}
+	sc.writeSched.AdjustStream(f.StreamID, f.PriorityParam)
+	return nil
+}
+
+func (sc *serverConn) newStream(id, pusherID uint32, state streamState) *stream {
+	sc.serveG.check()
+	if id == 0 {
+		panic("internal error: cannot create stream with id 0")
+	}
+
+	ctx, cancelCtx := contextWithCancel(sc.baseCtx)
+	st := &stream{
+		sc:        sc,
+		id:        id,
+		state:     state,
+		ctx:       ctx,
+		cancelCtx: cancelCtx,
+	}
+	st.cw.Init()
+	st.flow.conn = &sc.flow // link to conn-level counter
+	st.flow.add(sc.initialStreamSendWindowSize)
+	st.inflow.conn = &sc.inflow // link to conn-level counter
+	st.inflow.add(sc.srv.initialStreamRecvWindowSize())
+	if sc.hs.WriteTimeout != 0 {
+		st.writeDeadline = time.AfterFunc(sc.hs.WriteTimeout, st.onWriteTimeout)
+	}
+
+	sc.streams[id] = st
+	sc.writeSched.OpenStream(st.id, OpenStreamOptions{PusherID: pusherID})
+	if st.isPushed() {
+		sc.curPushedStreams++
+	} else {
+		sc.curClientStreams++
+	}
+	if sc.curOpenStreams() == 1 {
+		sc.setConnState(http.StateActive)
+	}
+
+	return st
+}
+
+func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*responseWriter, *http.Request, error) {
+	sc.serveG.check()
+
+	rp := requestParam{
+		method:    f.PseudoValue("method"),
+		scheme:    f.PseudoValue("scheme"),
+		authority: f.PseudoValue("authority"),
+		path:      f.PseudoValue("path"),
+	}
+
+	isConnect := rp.method == "CONNECT"
+	if isConnect {
+		if rp.path != "" || rp.scheme != "" || rp.authority == "" {
+			return nil, nil, streamError(f.StreamID, ErrCodeProtocol)
+		}
+	} else if rp.method == "" || rp.path == "" || (rp.scheme != "https" && rp.scheme != "http") {
+		// See 8.1.2.6 Malformed Requests and Responses:
+		//
+		// Malformed requests or responses that are detected
+		// MUST be treated as a stream error (Section 5.4.2)
+		// of type PROTOCOL_ERROR."
+		//
+		// 8.1.2.3 Request Pseudo-Header Fields
+		// "All HTTP/2 requests MUST include exactly one valid
+		// value for the :method, :scheme, and :path
+		// pseudo-header fields"
+		return nil, nil, streamError(f.StreamID, ErrCodeProtocol)
+	}
+
+	bodyOpen := !f.StreamEnded()
+	if rp.method == "HEAD" && bodyOpen {
+		// HEAD requests can't have bodies
+		return nil, nil, streamError(f.StreamID, ErrCodeProtoc
