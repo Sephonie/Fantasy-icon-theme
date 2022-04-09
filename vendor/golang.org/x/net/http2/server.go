@@ -2411,4 +2411,122 @@ const TrailerPrefix = "Trailer:"
 // header, the official ResponseWriter rules said trailers in Go must
 // be predeclared, and then we reuse the same ResponseWriter.Header()
 // map to mean both Headers and Trailers. When it's time to write the
-// Trai
+// Trailers, we pick out the fields of Headers that were declared as
+// trailers. That worked for a while, until we found the first major
+// user of Trailers in the wild: gRPC (using them only over http2),
+// and gRPC libraries permit setting trailers mid-stream without
+// predeclarnig them. So: change of plans. We still permit the old
+// way, but we also permit this hack: if a Header() key begins with
+// "Trailer:", the suffix of that key is a Trailer. Because ':' is an
+// invalid token byte anyway, there is no ambiguity. (And it's already
+// filtered out) It's mildly hacky, but not terrible.
+//
+// This method runs after the Handler is done and promotes any Header
+// fields to be trailers.
+func (rws *responseWriterState) promoteUndeclaredTrailers() {
+	for k, vv := range rws.handlerHeader {
+		if !strings.HasPrefix(k, TrailerPrefix) {
+			continue
+		}
+		trailerKey := strings.TrimPrefix(k, TrailerPrefix)
+		rws.declareTrailer(trailerKey)
+		rws.handlerHeader[http.CanonicalHeaderKey(trailerKey)] = vv
+	}
+
+	if len(rws.trailers) > 1 {
+		sorter := sorterPool.Get().(*sorter)
+		sorter.SortStrings(rws.trailers)
+		sorterPool.Put(sorter)
+	}
+}
+
+func (w *responseWriter) Flush() {
+	rws := w.rws
+	if rws == nil {
+		panic("Header called after Handler finished")
+	}
+	if rws.bw.Buffered() > 0 {
+		if err := rws.bw.Flush(); err != nil {
+			// Ignore the error. The frame writer already knows.
+			return
+		}
+	} else {
+		// The bufio.Writer won't call chunkWriter.Write
+		// (writeChunk with zero bytes, so we have to do it
+		// ourselves to force the HTTP response header and/or
+		// final DATA frame (with END_STREAM) to be sent.
+		rws.writeChunk(nil)
+	}
+}
+
+func (w *responseWriter) CloseNotify() <-chan bool {
+	rws := w.rws
+	if rws == nil {
+		panic("CloseNotify called after Handler finished")
+	}
+	rws.closeNotifierMu.Lock()
+	ch := rws.closeNotifierCh
+	if ch == nil {
+		ch = make(chan bool, 1)
+		rws.closeNotifierCh = ch
+		cw := rws.stream.cw
+		go func() {
+			cw.Wait() // wait for close
+			ch <- true
+		}()
+	}
+	rws.closeNotifierMu.Unlock()
+	return ch
+}
+
+func (w *responseWriter) Header() http.Header {
+	rws := w.rws
+	if rws == nil {
+		panic("Header called after Handler finished")
+	}
+	if rws.handlerHeader == nil {
+		rws.handlerHeader = make(http.Header)
+	}
+	return rws.handlerHeader
+}
+
+// checkWriteHeaderCode is a copy of net/http's checkWriteHeaderCode.
+func checkWriteHeaderCode(code int) {
+	// Issue 22880: require valid WriteHeader status codes.
+	// For now we only enforce that it's three digits.
+	// In the future we might block things over 599 (600 and above aren't defined
+	// at http://httpwg.org/specs/rfc7231.html#status.codes)
+	// and we might block under 200 (once we have more mature 1xx support).
+	// But for now any three digits.
+	//
+	// We used to send "HTTP/1.1 000 0" on the wire in responses but there's
+	// no equivalent bogus thing we can realistically send in HTTP/2,
+	// so we'll consistently panic instead and help people find their bugs
+	// early. (We can't return an error from WriteHeader even if we wanted to.)
+	if code < 100 || code > 999 {
+		panic(fmt.Sprintf("invalid WriteHeader code %v", code))
+	}
+}
+
+func (w *responseWriter) WriteHeader(code int) {
+	rws := w.rws
+	if rws == nil {
+		panic("WriteHeader called after Handler finished")
+	}
+	rws.writeHeader(code)
+}
+
+func (rws *responseWriterState) writeHeader(code int) {
+	if !rws.wroteHeader {
+		checkWriteHeaderCode(code)
+		rws.wroteHeader = true
+		rws.status = code
+		if len(rws.handlerHeader) > 0 {
+			rws.snapHeader = cloneHeader(rws.handlerHeader)
+		}
+	}
+}
+
+func cloneHeader(h http.Header) http.Header {
+	h2 := make(http.Header, len(h))
+	fo
