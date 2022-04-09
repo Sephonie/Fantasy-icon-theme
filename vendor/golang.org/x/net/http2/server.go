@@ -2066,4 +2066,130 @@ func (sc *serverConn) runHandler(rw *responseWriter, req *http.Request, handler 
 	didPanic = false
 }
 
-func handleHeaderListTooLong(w http
+func handleHeaderListTooLong(w http.ResponseWriter, r *http.Request) {
+	// 10.5.1 Limits on Header Block Size:
+	// .. "A server that receives a larger header block than it is
+	// willing to handle can send an HTTP 431 (Request Header Fields Too
+	// Large) status code"
+	const statusRequestHeaderFieldsTooLarge = 431 // only in Go 1.6+
+	w.WriteHeader(statusRequestHeaderFieldsTooLarge)
+	io.WriteString(w, "<h1>HTTP Error 431</h1><p>Request Header Field(s) Too Large</p>")
+}
+
+// called from handler goroutines.
+// h may be nil.
+func (sc *serverConn) writeHeaders(st *stream, headerData *writeResHeaders) error {
+	sc.serveG.checkNotOn() // NOT on
+	var errc chan error
+	if headerData.h != nil {
+		// If there's a header map (which we don't own), so we have to block on
+		// waiting for this frame to be written, so an http.Flush mid-handler
+		// writes out the correct value of keys, before a handler later potentially
+		// mutates it.
+		errc = errChanPool.Get().(chan error)
+	}
+	if err := sc.writeFrameFromHandler(FrameWriteRequest{
+		write:  headerData,
+		stream: st,
+		done:   errc,
+	}); err != nil {
+		return err
+	}
+	if errc != nil {
+		select {
+		case err := <-errc:
+			errChanPool.Put(errc)
+			return err
+		case <-sc.doneServing:
+			return errClientDisconnected
+		case <-st.cw:
+			return errStreamClosed
+		}
+	}
+	return nil
+}
+
+// called from handler goroutines.
+func (sc *serverConn) write100ContinueHeaders(st *stream) {
+	sc.writeFrameFromHandler(FrameWriteRequest{
+		write:  write100ContinueHeadersFrame{st.id},
+		stream: st,
+	})
+}
+
+// A bodyReadMsg tells the server loop that the http.Handler read n
+// bytes of the DATA from the client on the given stream.
+type bodyReadMsg struct {
+	st *stream
+	n  int
+}
+
+// called from handler goroutines.
+// Notes that the handler for the given stream ID read n bytes of its body
+// and schedules flow control tokens to be sent.
+func (sc *serverConn) noteBodyReadFromHandler(st *stream, n int, err error) {
+	sc.serveG.checkNotOn() // NOT on
+	if n > 0 {
+		select {
+		case sc.bodyReadCh <- bodyReadMsg{st, n}:
+		case <-sc.doneServing:
+		}
+	}
+}
+
+func (sc *serverConn) noteBodyRead(st *stream, n int) {
+	sc.serveG.check()
+	sc.sendWindowUpdate(nil, n) // conn-level
+	if st.state != stateHalfClosedRemote && st.state != stateClosed {
+		// Don't send this WINDOW_UPDATE if the stream is closed
+		// remotely.
+		sc.sendWindowUpdate(st, n)
+	}
+}
+
+// st may be nil for conn-level
+func (sc *serverConn) sendWindowUpdate(st *stream, n int) {
+	sc.serveG.check()
+	// "The legal range for the increment to the flow control
+	// window is 1 to 2^31-1 (2,147,483,647) octets."
+	// A Go Read call on 64-bit machines could in theory read
+	// a larger Read than this. Very unlikely, but we handle it here
+	// rather than elsewhere for now.
+	const maxUint31 = 1<<31 - 1
+	for n >= maxUint31 {
+		sc.sendWindowUpdate32(st, maxUint31)
+		n -= maxUint31
+	}
+	sc.sendWindowUpdate32(st, int32(n))
+}
+
+// st may be nil for conn-level
+func (sc *serverConn) sendWindowUpdate32(st *stream, n int32) {
+	sc.serveG.check()
+	if n == 0 {
+		return
+	}
+	if n < 0 {
+		panic("negative update")
+	}
+	var streamID uint32
+	if st != nil {
+		streamID = st.id
+	}
+	sc.writeFrame(FrameWriteRequest{
+		write:  writeWindowUpdate{streamID: streamID, n: uint32(n)},
+		stream: st,
+	})
+	var ok bool
+	if st == nil {
+		ok = sc.inflow.add(n)
+	} else {
+		ok = st.inflow.add(n)
+	}
+	if !ok {
+		panic("internal error; sent too many window updates without decrements?")
+	}
+}
+
+// requestBody is the Handler's Request.Body type.
+// Read and Close may be cal
