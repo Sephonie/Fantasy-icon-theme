@@ -2298,4 +2298,117 @@ func (rws *responseWriterState) declareTrailer(k string) {
 // bufio.Writer may bypass its chunking, sometimes p may be
 // arbitrarily large.
 //
-// writeChunk is also respo
+// writeChunk is also responsible (on the first chunk) for sending the
+// HEADER response.
+func (rws *responseWriterState) writeChunk(p []byte) (n int, err error) {
+	if !rws.wroteHeader {
+		rws.writeHeader(200)
+	}
+
+	isHeadResp := rws.req.Method == "HEAD"
+	if !rws.sentHeader {
+		rws.sentHeader = true
+		var ctype, clen string
+		if clen = rws.snapHeader.Get("Content-Length"); clen != "" {
+			rws.snapHeader.Del("Content-Length")
+			clen64, err := strconv.ParseInt(clen, 10, 64)
+			if err == nil && clen64 >= 0 {
+				rws.sentContentLen = clen64
+			} else {
+				clen = ""
+			}
+		}
+		if clen == "" && rws.handlerDone && bodyAllowedForStatus(rws.status) && (len(p) > 0 || !isHeadResp) {
+			clen = strconv.Itoa(len(p))
+		}
+		_, hasContentType := rws.snapHeader["Content-Type"]
+		if !hasContentType && bodyAllowedForStatus(rws.status) && len(p) > 0 {
+			ctype = http.DetectContentType(p)
+		}
+		var date string
+		if _, ok := rws.snapHeader["Date"]; !ok {
+			// TODO(bradfitz): be faster here, like net/http? measure.
+			date = time.Now().UTC().Format(http.TimeFormat)
+		}
+
+		for _, v := range rws.snapHeader["Trailer"] {
+			foreachHeaderElement(v, rws.declareTrailer)
+		}
+
+		endStream := (rws.handlerDone && !rws.hasTrailers() && len(p) == 0) || isHeadResp
+		err = rws.conn.writeHeaders(rws.stream, &writeResHeaders{
+			streamID:      rws.stream.id,
+			httpResCode:   rws.status,
+			h:             rws.snapHeader,
+			endStream:     endStream,
+			contentType:   ctype,
+			contentLength: clen,
+			date:          date,
+		})
+		if err != nil {
+			rws.dirty = true
+			return 0, err
+		}
+		if endStream {
+			return 0, nil
+		}
+	}
+	if isHeadResp {
+		return len(p), nil
+	}
+	if len(p) == 0 && !rws.handlerDone {
+		return 0, nil
+	}
+
+	if rws.handlerDone {
+		rws.promoteUndeclaredTrailers()
+	}
+
+	endStream := rws.handlerDone && !rws.hasTrailers()
+	if len(p) > 0 || endStream {
+		// only send a 0 byte DATA frame if we're ending the stream.
+		if err := rws.conn.writeDataFromHandler(rws.stream, p, endStream); err != nil {
+			rws.dirty = true
+			return 0, err
+		}
+	}
+
+	if rws.handlerDone && rws.hasTrailers() {
+		err = rws.conn.writeHeaders(rws.stream, &writeResHeaders{
+			streamID:  rws.stream.id,
+			h:         rws.handlerHeader,
+			trailers:  rws.trailers,
+			endStream: true,
+		})
+		if err != nil {
+			rws.dirty = true
+		}
+		return len(p), err
+	}
+	return len(p), nil
+}
+
+// TrailerPrefix is a magic prefix for ResponseWriter.Header map keys
+// that, if present, signals that the map entry is actually for
+// the response trailers, and not the response headers. The prefix
+// is stripped after the ServeHTTP call finishes and the values are
+// sent in the trailers.
+//
+// This mechanism is intended only for trailers that are not known
+// prior to the headers being written. If the set of trailers is fixed
+// or known before the header is written, the normal Go trailers mechanism
+// is preferred:
+//    https://golang.org/pkg/net/http/#ResponseWriter
+//    https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
+const TrailerPrefix = "Trailer:"
+
+// promoteUndeclaredTrailers permits http.Handlers to set trailers
+// after the header has already been flushed. Because the Go
+// ResponseWriter interface has no way to set Trailers (only the
+// Header), and because we didn't want to expand the ResponseWriter
+// interface, and because nobody used trailers, and because RFC 2616
+// says you SHOULD (but not must) predeclare any trailers in the
+// header, the official ResponseWriter rules said trailers in Go must
+// be predeclared, and then we reuse the same ResponseWriter.Header()
+// map to mean both Headers and Trailers. When it's time to write the
+// Trai
