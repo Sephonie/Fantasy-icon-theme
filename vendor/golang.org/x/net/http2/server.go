@@ -2529,4 +2529,133 @@ func (rws *responseWriterState) writeHeader(code int) {
 
 func cloneHeader(h http.Header) http.Header {
 	h2 := make(http.Header, len(h))
-	fo
+	for k, vv := range h {
+		vv2 := make([]string, len(vv))
+		copy(vv2, vv)
+		h2[k] = vv2
+	}
+	return h2
+}
+
+// The Life Of A Write is like this:
+//
+// * Handler calls w.Write or w.WriteString ->
+// * -> rws.bw (*bufio.Writer) ->
+// * (Handler might call Flush)
+// * -> chunkWriter{rws}
+// * -> responseWriterState.writeChunk(p []byte)
+// * -> responseWriterState.writeChunk (most of the magic; see comment there)
+func (w *responseWriter) Write(p []byte) (n int, err error) {
+	return w.write(len(p), p, "")
+}
+
+func (w *responseWriter) WriteString(s string) (n int, err error) {
+	return w.write(len(s), nil, s)
+}
+
+// either dataB or dataS is non-zero.
+func (w *responseWriter) write(lenData int, dataB []byte, dataS string) (n int, err error) {
+	rws := w.rws
+	if rws == nil {
+		panic("Write called after Handler finished")
+	}
+	if !rws.wroteHeader {
+		w.WriteHeader(200)
+	}
+	if !bodyAllowedForStatus(rws.status) {
+		return 0, http.ErrBodyNotAllowed
+	}
+	rws.wroteBytes += int64(len(dataB)) + int64(len(dataS)) // only one can be set
+	if rws.sentContentLen != 0 && rws.wroteBytes > rws.sentContentLen {
+		// TODO: send a RST_STREAM
+		return 0, errors.New("http2: handler wrote more than declared Content-Length")
+	}
+
+	if dataB != nil {
+		return rws.bw.Write(dataB)
+	} else {
+		return rws.bw.WriteString(dataS)
+	}
+}
+
+func (w *responseWriter) handlerDone() {
+	rws := w.rws
+	dirty := rws.dirty
+	rws.handlerDone = true
+	w.Flush()
+	w.rws = nil
+	if !dirty {
+		// Only recycle the pool if all prior Write calls to
+		// the serverConn goroutine completed successfully. If
+		// they returned earlier due to resets from the peer
+		// there might still be write goroutines outstanding
+		// from the serverConn referencing the rws memory. See
+		// issue 20704.
+		responseWriterStatePool.Put(rws)
+	}
+}
+
+// Push errors.
+var (
+	ErrRecursivePush    = errors.New("http2: recursive push not allowed")
+	ErrPushLimitReached = errors.New("http2: push would exceed peer's SETTINGS_MAX_CONCURRENT_STREAMS")
+)
+
+// pushOptions is the internal version of http.PushOptions, which we
+// cannot include here because it's only defined in Go 1.8 and later.
+type pushOptions struct {
+	Method string
+	Header http.Header
+}
+
+func (w *responseWriter) push(target string, opts pushOptions) error {
+	st := w.rws.stream
+	sc := st.sc
+	sc.serveG.checkNotOn()
+
+	// No recursive pushes: "PUSH_PROMISE frames MUST only be sent on a peer-initiated stream."
+	// http://tools.ietf.org/html/rfc7540#section-6.6
+	if st.isPushed() {
+		return ErrRecursivePush
+	}
+
+	// Default options.
+	if opts.Method == "" {
+		opts.Method = "GET"
+	}
+	if opts.Header == nil {
+		opts.Header = http.Header{}
+	}
+	wantScheme := "http"
+	if w.rws.req.TLS != nil {
+		wantScheme = "https"
+	}
+
+	// Validate the request.
+	u, err := url.Parse(target)
+	if err != nil {
+		return err
+	}
+	if u.Scheme == "" {
+		if !strings.HasPrefix(target, "/") {
+			return fmt.Errorf("target must be an absolute URL or an absolute path: %q", target)
+		}
+		u.Scheme = wantScheme
+		u.Host = w.rws.req.Host
+	} else {
+		if u.Scheme != wantScheme {
+			return fmt.Errorf("cannot push URL with scheme %q from request with scheme %q", u.Scheme, wantScheme)
+		}
+		if u.Host == "" {
+			return errors.New("URL must have a host")
+		}
+	}
+	for k := range opts.Header {
+		if strings.HasPrefix(k, ":") {
+			return fmt.Errorf("promised request headers cannot include pseudo header %q", k)
+		}
+		// These headers are meaningful only if the request has a body,
+		// but PUSH_PROMISE requests cannot have a body.
+		// http://tools.ietf.org/html/rfc7540#section-8.2
+		// Also disallow Host, since the promised URL must be absolute.
+		switch stri
