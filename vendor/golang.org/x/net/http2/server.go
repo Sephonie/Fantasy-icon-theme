@@ -2764,4 +2764,125 @@ func (sc *serverConn) startPush(msg *startPushRequest) {
 			method:    msg.method,
 			scheme:    msg.url.Scheme,
 			authority: msg.url.Host,
-			path:      msg.u
+			path:      msg.url.RequestURI(),
+			header:    cloneHeader(msg.header), // clone since handler runs concurrently with writing the PUSH_PROMISE
+		})
+		if err != nil {
+			// Should not happen, since we've already validated msg.url.
+			panic(fmt.Sprintf("newWriterAndRequestNoBody(%+v): %v", msg.url, err))
+		}
+
+		go sc.runHandler(rw, req, sc.handler.ServeHTTP)
+		return promisedID, nil
+	}
+
+	sc.writeFrame(FrameWriteRequest{
+		write: &writePushPromise{
+			streamID:           msg.parent.id,
+			method:             msg.method,
+			url:                msg.url,
+			h:                  msg.header,
+			allocatePromisedID: allocatePromisedID,
+		},
+		stream: msg.parent,
+		done:   msg.done,
+	})
+}
+
+// foreachHeaderElement splits v according to the "#rule" construction
+// in RFC 2616 section 2.1 and calls fn for each non-empty element.
+func foreachHeaderElement(v string, fn func(string)) {
+	v = textproto.TrimString(v)
+	if v == "" {
+		return
+	}
+	if !strings.Contains(v, ",") {
+		fn(v)
+		return
+	}
+	for _, f := range strings.Split(v, ",") {
+		if f = textproto.TrimString(f); f != "" {
+			fn(f)
+		}
+	}
+}
+
+// From http://httpwg.org/specs/rfc7540.html#rfc.section.8.1.2.2
+var connHeaders = []string{
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Connection",
+	"Transfer-Encoding",
+	"Upgrade",
+}
+
+// checkValidHTTP2RequestHeaders checks whether h is a valid HTTP/2 request,
+// per RFC 7540 Section 8.1.2.2.
+// The returned error is reported to users.
+func checkValidHTTP2RequestHeaders(h http.Header) error {
+	for _, k := range connHeaders {
+		if _, ok := h[k]; ok {
+			return fmt.Errorf("request header %q is not valid in HTTP/2", k)
+		}
+	}
+	te := h["Te"]
+	if len(te) > 0 && (len(te) > 1 || (te[0] != "trailers" && te[0] != "")) {
+		return errors.New(`request header "TE" may only be "trailers" in HTTP/2`)
+	}
+	return nil
+}
+
+func new400Handler(err error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+// ValidTrailerHeader reports whether name is a valid header field name to appear
+// in trailers.
+// See: http://tools.ietf.org/html/rfc7230#section-4.1.2
+func ValidTrailerHeader(name string) bool {
+	name = http.CanonicalHeaderKey(name)
+	if strings.HasPrefix(name, "If-") || badTrailer[name] {
+		return false
+	}
+	return true
+}
+
+var badTrailer = map[string]bool{
+	"Authorization":       true,
+	"Cache-Control":       true,
+	"Connection":          true,
+	"Content-Encoding":    true,
+	"Content-Length":      true,
+	"Content-Range":       true,
+	"Content-Type":        true,
+	"Expect":              true,
+	"Host":                true,
+	"Keep-Alive":          true,
+	"Max-Forwards":        true,
+	"Pragma":              true,
+	"Proxy-Authenticate":  true,
+	"Proxy-Authorization": true,
+	"Proxy-Connection":    true,
+	"Range":               true,
+	"Realm":               true,
+	"Te":                  true,
+	"Trailer":             true,
+	"Transfer-Encoding":   true,
+	"Www-Authenticate":    true,
+}
+
+// h1ServerKeepAlivesDisabled reports whether hs has its keep-alives
+// disabled. See comments on h1ServerShutdownChan above for why
+// the code is written this way.
+func h1ServerKeepAlivesDisabled(hs *http.Server) bool {
+	var x interface{} = hs
+	type I interface {
+		doKeepAlives() bool
+	}
+	if hs, ok := x.(I); ok {
+		return !hs.doKeepAlives()
+	}
+	return false
+}
