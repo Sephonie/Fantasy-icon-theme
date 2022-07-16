@@ -279,4 +279,134 @@ func (t *Tailoring) Insert(level colltab.Level, str, extend string) error {
 		}
 		e.level = a.level
 		if a != e {
-			a.insert
+			a.insertAfter(e)
+			a.level = level
+		} else {
+			// We don't set a to prev itself. This has the effect of the entry
+			// getting new collation elements that are an increment of itself.
+			// This is intentional.
+			a.prev.level = level
+		}
+	}
+	e.extend = norm.NFD.String(extend)
+	e.exclude = false
+	e.modified = true
+	e.elems = nil
+	t.anchor = e
+	return nil
+}
+
+func (o *ordering) getWeight(e *entry) []rawCE {
+	if len(e.elems) == 0 && e.logical == noAnchor {
+		if e.implicit {
+			for _, r := range e.runes {
+				e.elems = append(e.elems, o.getWeight(o.find(string(r)))...)
+			}
+		} else if e.before {
+			count := [colltab.Identity + 1]int{}
+			a := e
+			for ; a.elems == nil && !a.implicit; a = a.next {
+				count[a.level]++
+			}
+			e.elems = []rawCE{makeRawCE(a.elems[0].w, a.elems[0].ccc)}
+			for i := colltab.Primary; i < colltab.Quaternary; i++ {
+				if count[i] != 0 {
+					e.elems[0].w[i] -= count[i]
+					break
+				}
+			}
+			if e.prev != nil {
+				o.verifyWeights(e.prev, e, e.prev.level)
+			}
+		} else {
+			prev := e.prev
+			e.elems = nextWeight(prev.level, o.getWeight(prev))
+			o.verifyWeights(e, e.next, e.level)
+		}
+	}
+	return e.elems
+}
+
+func (o *ordering) addExtension(e *entry) {
+	if ex := o.find(e.extend); ex != nil {
+		e.elems = append(e.elems, ex.elems...)
+	} else {
+		for _, r := range []rune(e.extend) {
+			e.elems = append(e.elems, o.find(string(r)).elems...)
+		}
+	}
+	e.extend = ""
+}
+
+func (o *ordering) verifyWeights(a, b *entry, level colltab.Level) error {
+	if level == colltab.Identity || b == nil || b.elems == nil || a.elems == nil {
+		return nil
+	}
+	for i := colltab.Primary; i < level; i++ {
+		if a.elems[0].w[i] < b.elems[0].w[i] {
+			return nil
+		}
+	}
+	if a.elems[0].w[level] >= b.elems[0].w[level] {
+		err := fmt.Errorf("%s:overflow: collation elements of %q (%X) overflows those of %q (%X) at level %d (%X >= %X)", o.id, a.str, a.runes, b.str, b.runes, level, a.elems, b.elems)
+		log.Println(err)
+		// TODO: return the error instead, or better, fix the conflicting entry by making room.
+	}
+	return nil
+}
+
+func (b *Builder) error(e error) {
+	if e != nil {
+		b.err = e
+	}
+}
+
+func (b *Builder) errorID(locale string, e error) {
+	if e != nil {
+		b.err = fmt.Errorf("%s:%v", locale, e)
+	}
+}
+
+// patchNorm ensures that NFC and NFD counterparts are consistent.
+func (o *ordering) patchNorm() {
+	// Insert the NFD counterparts, if necessary.
+	for _, e := range o.ordered {
+		nfd := norm.NFD.String(e.str)
+		if nfd != e.str {
+			if e0 := o.find(nfd); e0 != nil && !e0.modified {
+				e0.elems = e.elems
+			} else if e.modified && !equalCEArrays(o.genColElems(nfd), e.elems) {
+				e := o.newEntry(nfd, e.elems)
+				e.modified = true
+			}
+		}
+	}
+	// Update unchanged composed forms if one of their parts changed.
+	for _, e := range o.ordered {
+		nfd := norm.NFD.String(e.str)
+		if e.modified || nfd == e.str {
+			continue
+		}
+		if e0 := o.find(nfd); e0 != nil {
+			e.elems = e0.elems
+		} else {
+			e.elems = o.genColElems(nfd)
+			if norm.NFD.LastBoundary([]byte(nfd)) == 0 {
+				r := []rune(nfd)
+				head := string(r[0])
+				tail := ""
+				for i := 1; i < len(r); i++ {
+					s := norm.NFC.String(head + string(r[i]))
+					if e0 := o.find(s); e0 != nil && e0.modified {
+						head = s
+					} else {
+						tail += string(r[i])
+					}
+				}
+				e.elems = append(o.genColElems(head), o.genColElems(tail)...)
+			}
+		}
+	}
+	// Exclude entries for which the individual runes generate the same collation elements.
+	for _, e := range o.ordered {
+		if len(e.run
