@@ -409,4 +409,148 @@ func (o *ordering) patchNorm() {
 	}
 	// Exclude entries for which the individual runes generate the same collation elements.
 	for _, e := range o.ordered {
-		if len(e.run
+		if len(e.runes) > 1 && equalCEArrays(o.genColElems(e.str), e.elems) {
+			e.exclude = true
+		}
+	}
+}
+
+func (b *Builder) buildOrdering(o *ordering) {
+	for _, e := range o.ordered {
+		o.getWeight(e)
+	}
+	for _, e := range o.ordered {
+		o.addExtension(e)
+	}
+	o.patchNorm()
+	o.sort()
+	simplify(o)
+	b.processExpansions(o)   // requires simplify
+	b.processContractions(o) // requires simplify
+
+	t := newNode()
+	for e := o.front(); e != nil; e, _ = e.nextIndexed() {
+		if !e.skip() {
+			ce, err := e.encode()
+			b.errorID(o.id, err)
+			t.insert(e.runes[0], ce)
+		}
+	}
+	o.handle = b.index.addTrie(t)
+}
+
+func (b *Builder) build() (*table, error) {
+	if b.built {
+		return b.t, b.err
+	}
+	b.built = true
+	b.t = &table{
+		Table: colltab.Table{
+			MaxContractLen: utf8.UTFMax,
+			VariableTop:    uint32(b.varTop),
+		},
+	}
+
+	b.buildOrdering(&b.root)
+	b.t.root = b.root.handle
+	for _, t := range b.locale {
+		b.buildOrdering(t.index)
+		if b.err != nil {
+			break
+		}
+	}
+	i, err := b.index.generate()
+	b.t.trie = *i
+	b.t.Index = colltab.Trie{
+		Index:   i.index,
+		Values:  i.values,
+		Index0:  i.index[blockSize*b.t.root.lookupStart:],
+		Values0: i.values[blockSize*b.t.root.valueStart:],
+	}
+	b.error(err)
+	return b.t, b.err
+}
+
+// Build builds the root Collator.
+func (b *Builder) Build() (colltab.Weighter, error) {
+	table, err := b.build()
+	if err != nil {
+		return nil, err
+	}
+	return table, nil
+}
+
+// Build builds a Collator for Tailoring t.
+func (t *Tailoring) Build() (colltab.Weighter, error) {
+	// TODO: implement.
+	return nil, nil
+}
+
+// Print prints the tables for b and all its Tailorings as a Go file
+// that can be included in the Collate package.
+func (b *Builder) Print(w io.Writer) (n int, err error) {
+	p := func(nn int, e error) {
+		n += nn
+		if err == nil {
+			err = e
+		}
+	}
+	t, err := b.build()
+	if err != nil {
+		return 0, err
+	}
+	p(fmt.Fprintf(w, `var availableLocales = "und`))
+	for _, loc := range b.locale {
+		if loc.id != "und" {
+			p(fmt.Fprintf(w, ",%s", loc.id))
+		}
+	}
+	p(fmt.Fprint(w, "\"\n\n"))
+	p(fmt.Fprintf(w, "const varTop = 0x%x\n\n", b.varTop))
+	p(fmt.Fprintln(w, "var locales = [...]tableIndex{"))
+	for _, loc := range b.locale {
+		if loc.id == "und" {
+			p(t.fprintIndex(w, loc.index.handle, loc.id))
+		}
+	}
+	for _, loc := range b.locale {
+		if loc.id != "und" {
+			p(t.fprintIndex(w, loc.index.handle, loc.id))
+		}
+	}
+	p(fmt.Fprint(w, "}\n\n"))
+	n, _, err = t.fprint(w, "main")
+	return
+}
+
+// reproducibleFromNFKD checks whether the given expansion could be generated
+// from an NFKD expansion.
+func reproducibleFromNFKD(e *entry, exp, nfkd []rawCE) bool {
+	// Length must be equal.
+	if len(exp) != len(nfkd) {
+		return false
+	}
+	for i, ce := range exp {
+		// Primary and secondary values should be equal.
+		if ce.w[0] != nfkd[i].w[0] || ce.w[1] != nfkd[i].w[1] {
+			return false
+		}
+		// Tertiary values should be equal to maxTertiary for third element onwards.
+		// TODO: there seem to be a lot of cases in CLDR (e.g. ㏭ in zh.xml) that can
+		// simply be dropped.  Try this out by dropping the following code.
+		if i >= 2 && ce.w[2] != maxTertiary {
+			return false
+		}
+		if _, err := makeCE(ce); err != nil {
+			// Simply return false. The error will be caught elsewhere.
+			return false
+		}
+	}
+	return true
+}
+
+func simplify(o *ordering) {
+	// Runes that are a starter of a contraction should not be removed.
+	// (To date, there is only Kannada character 0CCA.)
+	keep := make(map[rune]bool)
+	for e := o.front(); e != nil
