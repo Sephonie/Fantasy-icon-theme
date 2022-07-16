@@ -178,4 +178,105 @@ func (t *Tailoring) setAnchor(anchor string) error {
 	a := t.index.find(anchor)
 	if a == nil {
 		a = t.index.newEntry(anchor, nil)
-		a.im
+		a.implicit = true
+		a.modified = true
+		for _, r := range []rune(anchor) {
+			e := t.index.find(string(r))
+			e.lock = true
+		}
+	}
+	t.anchor = a
+	return nil
+}
+
+// SetAnchor sets the point after which elements passed in subsequent calls to
+// Insert will be inserted.  It is equivalent to the reset directive in an LDML
+// specification.  See Insert for an example.
+// SetAnchor supports the following logical reset positions:
+// <first_tertiary_ignorable/>, <last_teriary_ignorable/>, <first_primary_ignorable/>,
+// and <last_non_ignorable/>.
+func (t *Tailoring) SetAnchor(anchor string) error {
+	if err := t.setAnchor(anchor); err != nil {
+		return err
+	}
+	t.before = false
+	return nil
+}
+
+// SetAnchorBefore is similar to SetAnchor, except that subsequent calls to
+// Insert will insert entries before the anchor.
+func (t *Tailoring) SetAnchorBefore(anchor string) error {
+	if err := t.setAnchor(anchor); err != nil {
+		return err
+	}
+	t.before = true
+	return nil
+}
+
+// Insert sets the ordering of str relative to the entry set by the previous
+// call to SetAnchor or Insert.  The argument extend corresponds
+// to the extend elements as defined in LDML.  A non-empty value for extend
+// will cause the collation elements corresponding to extend to be appended
+// to the collation elements generated for the entry added by Insert.
+// This has the same net effect as sorting str after the string anchor+extend.
+// See http://www.unicode.org/reports/tr10/#Tailoring_Example for details
+// on parametric tailoring and http://unicode.org/reports/tr35/#Collation_Elements
+// for full details on LDML.
+//
+// Examples: create a tailoring for Swedish, where "ä" is ordered after "z"
+// at the primary sorting level:
+//      t := b.Tailoring("se")
+// 		t.SetAnchor("z")
+// 		t.Insert(colltab.Primary, "ä", "")
+// Order "ü" after "ue" at the secondary sorting level:
+//		t.SetAnchor("ue")
+//		t.Insert(colltab.Secondary, "ü","")
+// or
+//		t.SetAnchor("u")
+//		t.Insert(colltab.Secondary, "ü", "e")
+// Order "q" afer "ab" at the secondary level and "Q" after "q"
+// at the tertiary level:
+// 		t.SetAnchor("ab")
+// 		t.Insert(colltab.Secondary, "q", "")
+// 		t.Insert(colltab.Tertiary, "Q", "")
+// Order "b" before "a":
+//      t.SetAnchorBefore("a")
+//      t.Insert(colltab.Primary, "b", "")
+// Order "0" after the last primary ignorable:
+//      t.SetAnchor("<last_primary_ignorable/>")
+//      t.Insert(colltab.Primary, "0", "")
+func (t *Tailoring) Insert(level colltab.Level, str, extend string) error {
+	if t.anchor == nil {
+		return fmt.Errorf("%s:Insert: no anchor point set for tailoring of %s", t.id, str)
+	}
+	str = norm.NFC.String(str)
+	e := t.index.find(str)
+	if e == nil {
+		e = t.index.newEntry(str, nil)
+	} else if e.logical != noAnchor {
+		return fmt.Errorf("%s:Insert: cannot reinsert logical reset position %q", t.id, e.str)
+	}
+	if e.lock {
+		return fmt.Errorf("%s:Insert: cannot reinsert element %q", t.id, e.str)
+	}
+	a := t.anchor
+	// Find the first element after the anchor which differs at a level smaller or
+	// equal to the given level.  Then insert at this position.
+	// See http://unicode.org/reports/tr35/#Collation_Elements, Section 5.14.5 for details.
+	e.before = t.before
+	if t.before {
+		t.before = false
+		if a.prev == nil {
+			a.insertBefore(e)
+		} else {
+			for a = a.prev; a.level > level; a = a.prev {
+			}
+			a.insertAfter(e)
+		}
+		e.level = level
+	} else {
+		for ; a.level > level; a = a.next {
+		}
+		e.level = a.level
+		if a != e {
+			a.insert
