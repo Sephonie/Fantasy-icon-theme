@@ -686,4 +686,17 @@ func (b *Builder) processContractions(o *ordering) {
 		for _, e := range es {
 			ce, err := e.encodeBase()
 			b.errorID(o.id, err)
-			elems = appe
+			elems = append(elems, ce)
+		}
+		key = fmt.Sprintf("%v", elems)
+		i, ok := b.ctElem[key]
+		if !ok {
+			i = len(t.ContractElem)
+			b.ctElem[key] = i
+			t.ContractElem = append(t.ContractElem, elems...)
+		}
+		// Store info in entry for starter rune.
+		es[0].contractionIndex = i
+		es[0].contractionHandle = handle
+	}
+}
