@@ -553,4 +553,137 @@ func simplify(o *ordering) {
 	// Runes that are a starter of a contraction should not be removed.
 	// (To date, there is only Kannada character 0CCA.)
 	keep := make(map[rune]bool)
-	for e := o.front(); e != nil
+	for e := o.front(); e != nil; e, _ = e.nextIndexed() {
+		if len(e.runes) > 1 {
+			keep[e.runes[0]] = true
+		}
+	}
+	// Tag entries for which the runes NFKD decompose to identical values.
+	for e := o.front(); e != nil; e, _ = e.nextIndexed() {
+		s := e.str
+		nfkd := norm.NFKD.String(s)
+		nfd := norm.NFD.String(s)
+		if e.decompose || len(e.runes) > 1 || len(e.elems) == 1 || keep[e.runes[0]] || nfkd == nfd {
+			continue
+		}
+		if reproducibleFromNFKD(e, e.elems, o.genColElems(nfkd)) {
+			e.decompose = true
+		}
+	}
+}
+
+// appendExpansion converts the given collation sequence to
+// collation elements and adds them to the expansion table.
+// It returns an index to the expansion table.
+func (b *Builder) appendExpansion(e *entry) int {
+	t := b.t
+	i := len(t.ExpandElem)
+	ce := uint32(len(e.elems))
+	t.ExpandElem = append(t.ExpandElem, ce)
+	for _, w := range e.elems {
+		ce, err := makeCE(w)
+		if err != nil {
+			b.error(err)
+			return -1
+		}
+		t.ExpandElem = append(t.ExpandElem, ce)
+	}
+	return i
+}
+
+// processExpansions extracts data necessary to generate
+// the extraction tables.
+func (b *Builder) processExpansions(o *ordering) {
+	for e := o.front(); e != nil; e, _ = e.nextIndexed() {
+		if !e.expansion() {
+			continue
+		}
+		key := fmt.Sprintf("%v", e.elems)
+		i, ok := b.expIndex[key]
+		if !ok {
+			i = b.appendExpansion(e)
+			b.expIndex[key] = i
+		}
+		e.expansionIndex = i
+	}
+}
+
+func (b *Builder) processContractions(o *ordering) {
+	// Collate contractions per starter rune.
+	starters := []rune{}
+	cm := make(map[rune][]*entry)
+	for e := o.front(); e != nil; e, _ = e.nextIndexed() {
+		if e.contraction() {
+			if len(e.str) > b.t.MaxContractLen {
+				b.t.MaxContractLen = len(e.str)
+			}
+			r := e.runes[0]
+			if _, ok := cm[r]; !ok {
+				starters = append(starters, r)
+			}
+			cm[r] = append(cm[r], e)
+		}
+	}
+	// Add entries of single runes that are at a start of a contraction.
+	for e := o.front(); e != nil; e, _ = e.nextIndexed() {
+		if !e.contraction() {
+			r := e.runes[0]
+			if _, ok := cm[r]; ok {
+				cm[r] = append(cm[r], e)
+			}
+		}
+	}
+	// Build the tries for the contractions.
+	t := b.t
+	for _, r := range starters {
+		l := cm[r]
+		// Compute suffix strings. There are 31 different contraction suffix
+		// sets for 715 contractions and 82 contraction starter runes as of
+		// version 6.0.0.
+		sufx := []string{}
+		hasSingle := false
+		for _, e := range l {
+			if len(e.runes) > 1 {
+				sufx = append(sufx, string(e.runes[1:]))
+			} else {
+				hasSingle = true
+			}
+		}
+		if !hasSingle {
+			b.error(fmt.Errorf("no single entry for starter rune %U found", r))
+			continue
+		}
+		// Unique the suffix set.
+		sort.Strings(sufx)
+		key := strings.Join(sufx, "\n")
+		handle, ok := b.ctHandle[key]
+		if !ok {
+			var err error
+			handle, err = appendTrie(&t.ContractTries, sufx)
+			if err != nil {
+				b.error(err)
+			}
+			b.ctHandle[key] = handle
+		}
+		// Bucket sort entries in index order.
+		es := make([]*entry, len(l))
+		for _, e := range l {
+			var p, sn int
+			if len(e.runes) > 1 {
+				str := []byte(string(e.runes[1:]))
+				p, sn = lookup(&t.ContractTries, handle, str)
+				if sn != len(str) {
+					log.Fatalf("%s: processContractions: unexpected length for '%X'; len=%d; want %d", o.id, e.runes, sn, len(str))
+				}
+			}
+			if es[p] != nil {
+				log.Fatalf("%s: multiple contractions for position %d for rune %U", o.id, p, e.runes[0])
+			}
+			es[p] = e
+		}
+		// Create collation elements for contractions.
+		elems := []uint32{}
+		for _, e := range es {
+			ce, err := e.encodeBase()
+			b.errorID(o.id, err)
+			elems = appe
