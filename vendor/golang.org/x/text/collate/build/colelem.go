@@ -103,4 +103,109 @@ func makeExpansionHeader(n int) (uint32, error) {
 // The collation element, in this case, is of the form
 // 11110000 00000000 wwwwwwww vvvvvvvv, where
 //   - v* is the replacement tertiary weight for the first rune,
-//   - 
+//   - w* is the replacement tertiary weight for the second rune,
+// Tertiary weights of subsequent runes should be replaced with maxTertiary.
+// See http://www.unicode.org/reports/tr10/#Compatibility_Decompositions for more details.
+const (
+	decompID = 0xF0000000
+)
+
+func makeDecompose(t1, t2 int) (uint32, error) {
+	if t1 >= 256 || t1 < 0 {
+		return 0, fmt.Errorf("first tertiary weight out of bounds: %d >= 256", t1)
+	}
+	if t2 >= 256 || t2 < 0 {
+		return 0, fmt.Errorf("second tertiary weight out of bounds: %d >= 256", t2)
+	}
+	return uint32(t2<<8+t1) + decompID, nil
+}
+
+const (
+	// These constants were taken from http://www.unicode.org/versions/Unicode6.0.0/ch12.pdf.
+	minUnified       rune = 0x4E00
+	maxUnified            = 0x9FFF
+	minCompatibility      = 0xF900
+	maxCompatibility      = 0xFAFF
+	minRare               = 0x3400
+	maxRare               = 0x4DBF
+)
+const (
+	commonUnifiedOffset = 0x10000
+	rareUnifiedOffset   = 0x20000 // largest rune in common is U+FAFF
+	otherOffset         = 0x50000 // largest rune in rare is U+2FA1D
+	illegalOffset       = otherOffset + int(unicode.MaxRune)
+	maxPrimary          = illegalOffset + 1
+)
+
+// implicitPrimary returns the primary weight for the a rune
+// for which there is no entry for the rune in the collation table.
+// We take a different approach from the one specified in
+// http://unicode.org/reports/tr10/#Implicit_Weights,
+// but preserve the resulting relative ordering of the runes.
+func implicitPrimary(r rune) int {
+	if unicode.Is(unicode.Ideographic, r) {
+		if r >= minUnified && r <= maxUnified {
+			// The most common case for CJK.
+			return int(r) + commonUnifiedOffset
+		}
+		if r >= minCompatibility && r <= maxCompatibility {
+			// This will typically not hit. The DUCET explicitly specifies mappings
+			// for all characters that do not decompose.
+			return int(r) + commonUnifiedOffset
+		}
+		return int(r) + rareUnifiedOffset
+	}
+	return int(r) + otherOffset
+}
+
+// convertLargeWeights converts collation elements with large
+// primaries (either double primaries or for illegal runes)
+// to our own representation.
+// A CJK character C is represented in the DUCET as
+//   [.FBxx.0020.0002.C][.BBBB.0000.0000.C]
+// We will rewrite these characters to a single CE.
+// We assume the CJK values start at 0x8000.
+// See http://unicode.org/reports/tr10/#Implicit_Weights
+func convertLargeWeights(elems []rawCE) (res []rawCE, err error) {
+	const (
+		cjkPrimaryStart   = 0xFB40
+		rarePrimaryStart  = 0xFB80
+		otherPrimaryStart = 0xFBC0
+		illegalPrimary    = 0xFFFE
+		highBitsMask      = 0x3F
+		lowBitsMask       = 0x7FFF
+		lowBitsFlag       = 0x8000
+		shiftBits         = 15
+	)
+	for i := 0; i < len(elems); i++ {
+		ce := elems[i].w
+		p := ce[0]
+		if p < cjkPrimaryStart {
+			continue
+		}
+		if p > 0xFFFF {
+			return elems, fmt.Errorf("found primary weight %X; should be <= 0xFFFF", p)
+		}
+		if p >= illegalPrimary {
+			ce[0] = illegalOffset + p - illegalPrimary
+		} else {
+			if i+1 >= len(elems) {
+				return elems, fmt.Errorf("second part of double primary weight missing: %v", elems)
+			}
+			if elems[i+1].w[0]&lowBitsFlag == 0 {
+				return elems, fmt.Errorf("malformed second part of double primary weight: %v", elems)
+			}
+			np := ((p & highBitsMask) << shiftBits) + elems[i+1].w[0]&lowBitsMask
+			switch {
+			case p < rarePrimaryStart:
+				np += commonUnifiedOffset
+			case p < otherPrimaryStart:
+				np += rareUnifiedOffset
+			default:
+				p += otherOffset
+			}
+			ce[0] = np
+			for j := i + 1; j+1 < len(elems); j++ {
+				elems[j] = elems[j+1]
+			}
+			elems = elems[:len(elems
