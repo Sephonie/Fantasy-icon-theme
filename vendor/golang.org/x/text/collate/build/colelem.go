@@ -208,4 +208,87 @@ func convertLargeWeights(elems []rawCE) (res []rawCE, err error) {
 			for j := i + 1; j+1 < len(elems); j++ {
 				elems[j] = elems[j+1]
 			}
-			elems = elems[:len(elems
+			elems = elems[:len(elems)-1]
+		}
+	}
+	return elems, nil
+}
+
+// nextWeight computes the first possible collation weights following elems
+// for the given level.
+func nextWeight(level colltab.Level, elems []rawCE) []rawCE {
+	if level == colltab.Identity {
+		next := make([]rawCE, len(elems))
+		copy(next, elems)
+		return next
+	}
+	next := []rawCE{makeRawCE(elems[0].w, elems[0].ccc)}
+	next[0].w[level]++
+	if level < colltab.Secondary {
+		next[0].w[colltab.Secondary] = defaultSecondary
+	}
+	if level < colltab.Tertiary {
+		next[0].w[colltab.Tertiary] = defaultTertiary
+	}
+	// Filter entries that cannot influence ordering.
+	for _, ce := range elems[1:] {
+		skip := true
+		for i := colltab.Primary; i < level; i++ {
+			skip = skip && ce.w[i] == 0
+		}
+		if !skip {
+			next = append(next, ce)
+		}
+	}
+	return next
+}
+
+func nextVal(elems []rawCE, i int, level colltab.Level) (index, value int) {
+	for ; i < len(elems) && elems[i].w[level] == 0; i++ {
+	}
+	if i < len(elems) {
+		return i, elems[i].w[level]
+	}
+	return i, 0
+}
+
+// compareWeights returns -1 if a < b, 1 if a > b, or 0 otherwise.
+// It also returns the collation level at which the difference is found.
+func compareWeights(a, b []rawCE) (result int, level colltab.Level) {
+	for level := colltab.Primary; level < colltab.Identity; level++ {
+		var va, vb int
+		for ia, ib := 0, 0; ia < len(a) || ib < len(b); ia, ib = ia+1, ib+1 {
+			ia, va = nextVal(a, ia, level)
+			ib, vb = nextVal(b, ib, level)
+			if va != vb {
+				if va < vb {
+					return -1, level
+				} else {
+					return 1, level
+				}
+			}
+		}
+	}
+	return 0, colltab.Identity
+}
+
+func equalCE(a, b rawCE) bool {
+	for i := 0; i < 3; i++ {
+		if b.w[i] != a.w[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalCEArrays(a, b []rawCE) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !equalCE(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
