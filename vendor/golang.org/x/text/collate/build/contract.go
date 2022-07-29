@@ -152,4 +152,130 @@ func genStates(ct *colltab.ContractTrieSet, sis []stridx) (int, error) {
 		}
 	}
 	n := len(*ct) - start
-	// Append nodes f
+	// Append nodes for the remainder of the suffixes for each ctEntry.
+	sp := 0
+	for i, end := start, len(*ct); i < end; i++ {
+		fe := (*ct)[i]
+		if fe.H == 0 { // uninitialized non-final
+			ln := len(*ct) - start - n
+			if ln > 0xFF {
+				return 0, fmt.Errorf("genStates: relative block offset too large: %d > 255", ln)
+			}
+			fe.H = uint8(ln)
+			// Find first non-final strings with same byte as current entry.
+			for ; sis[sp].str[0] != fe.L; sp++ {
+			}
+			se := sp + 1
+			for ; se < len(sis) && len(sis[se].str) > 1 && sis[se].str[0] == fe.L; se++ {
+			}
+			sl := sis[sp:se]
+			sp = se
+			for i, si := range sl {
+				sl[i].str = si.str[1:]
+			}
+			nn, err := genStates(ct, sl)
+			if err != nil {
+				return 0, err
+			}
+			fe.N = uint8(nn)
+			(*ct)[i] = fe
+		}
+	}
+	sort.Sort(entrySort((*ct)[start : start+n]))
+	return n, nil
+}
+
+// There may be both a final and non-final entry for a byte if the byte
+// is implied in a range of matches in the final entry.
+// We need to ensure that the non-final entry comes first in that case.
+type entrySort colltab.ContractTrieSet
+
+func (fe entrySort) Len() int      { return len(fe) }
+func (fe entrySort) Swap(i, j int) { fe[i], fe[j] = fe[j], fe[i] }
+func (fe entrySort) Less(i, j int) bool {
+	return fe[i].L > fe[j].L
+}
+
+// stridx is used for sorting suffixes and their associated offsets.
+type stridx struct {
+	str   string
+	index int
+}
+
+// For computing the offsets, we first sort by size, and then by string.
+// This ensures that strings that only differ in the last byte by 1
+// are sorted consecutively in increasing order such that they can
+// be packed as a range in a final ctEntry.
+type offsetSort []stridx
+
+func (si offsetSort) Len() int      { return len(si) }
+func (si offsetSort) Swap(i, j int) { si[i], si[j] = si[j], si[i] }
+func (si offsetSort) Less(i, j int) bool {
+	if len(si[i].str) != len(si[j].str) {
+		return len(si[i].str) > len(si[j].str)
+	}
+	return si[i].str < si[j].str
+}
+
+// For indexing, we want to ensure that strings are sorted in string order, where
+// for strings with the same prefix, we put longer strings before shorter ones.
+type genidxSort []stridx
+
+func (si genidxSort) Len() int      { return len(si) }
+func (si genidxSort) Swap(i, j int) { si[i], si[j] = si[j], si[i] }
+func (si genidxSort) Less(i, j int) bool {
+	if strings.HasPrefix(si[j].str, si[i].str) {
+		return false
+	}
+	if strings.HasPrefix(si[i].str, si[j].str) {
+		return true
+	}
+	return si[i].str < si[j].str
+}
+
+// lookup matches the longest suffix in str and returns the associated offset
+// and the number of bytes consumed.
+func lookup(ct *colltab.ContractTrieSet, h ctHandle, str []byte) (index, ns int) {
+	states := (*ct)[h.index:]
+	p := 0
+	n := h.n
+	for i := 0; i < n && p < len(str); {
+		e := states[i]
+		c := str[p]
+		if c >= e.L {
+			if e.L == c {
+				p++
+				if e.I != noIndex {
+					index, ns = int(e.I), p
+				}
+				if e.N != final {
+					// set to new state
+					i, states, n = 0, states[int(e.H)+n:], int(e.N)
+				} else {
+					return
+				}
+				continue
+			} else if e.N == final && c <= e.H {
+				p++
+				return int(c-e.L) + int(e.I), p
+			}
+		}
+		i++
+	}
+	return
+}
+
+// print writes the contractTrieSet t as compilable Go code to w. It returns
+// the total number of bytes written and the size of the resulting data structure in bytes.
+func print(t *colltab.ContractTrieSet, w io.Writer, name string) (n, size int, err error) {
+	update3 := func(nn, sz int, e error) {
+		n += nn
+		if err == nil {
+			err = e
+		}
+		size += sz
+	}
+	update2 := func(nn int, e error) { update3(nn, 0, e) }
+
+	update3(printArray(*t, w, name))
+	update2
