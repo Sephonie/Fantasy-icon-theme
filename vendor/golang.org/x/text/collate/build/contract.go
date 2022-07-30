@@ -278,4 +278,32 @@ func print(t *colltab.ContractTrieSet, w io.Writer, name string) (n, size int, e
 	update2 := func(nn int, e error) { update3(nn, 0, e) }
 
 	update3(printArray(*t, w, name))
-	update2
+	update2(fmt.Fprintf(w, "var %sContractTrieSet = ", name))
+	update3(printStruct(*t, w, name))
+	update2(fmt.Fprintln(w))
+	return
+}
+
+func printArray(ct colltab.ContractTrieSet, w io.Writer, name string) (n, size int, err error) {
+	p := func(f string, a ...interface{}) {
+		nn, e := fmt.Fprintf(w, f, a...)
+		n += nn
+		if err == nil {
+			err = e
+		}
+	}
+	size = len(ct) * 4
+	p("// %sCTEntries: %d entries, %d bytes\n", name, len(ct), size)
+	p("var %sCTEntries = [%d]struct{L,H,N,I uint8}{\n", name, len(ct))
+	for _, fe := range ct {
+		p("\t{0x%X, 0x%X, %d, %d},\n", fe.L, fe.H, fe.N, fe.I)
+	}
+	p("}\n")
+	return
+}
+
+func printStruct(ct colltab.ContractTrieSet, w io.Writer, name string) (n, size int, err error) {
+	n, err = fmt.Fprintf(w, "colltab.ContractTrieSet( %sCTEntries[:] )", name)
+	size = int(reflect.TypeOf(ct).Size())
+	return
+}
