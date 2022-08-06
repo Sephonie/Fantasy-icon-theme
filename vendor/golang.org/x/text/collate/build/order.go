@@ -379,4 +379,15 @@ func (o *ordering) sort() {
 }
 
 // genColElems generates a collation element array from the runes in str. This
-/
+// assumes that all collation elements have already been added to the Builder.
+func (o *ordering) genColElems(str string) []rawCE {
+	elems := []rawCE{}
+	for _, r := range []rune(str) {
+		for _, ce := range o.find(string(r)).elems {
+			if ce.w[0] != 0 || ce.w[1] != 0 || ce.w[2] != 0 {
+				elems = append(elems, ce)
+			}
+		}
+	}
+	return elems
+}
