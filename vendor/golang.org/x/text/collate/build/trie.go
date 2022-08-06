@@ -197,4 +197,94 @@ func (b *trieBuilder) addTrie(n *trieNode) *trieHandle {
 		// This ensures that continuation bytes UTF-8 sequences of length
 		// greater than 2 will automatically hit a null block if there
 		// was an undefined entry.
-		b.valueBlocks = ap
+		b.valueBlocks = append(b.valueBlocks, nil)
+	}
+	n = b.computeOffsets(n)
+	// Offset by one extra block as the first byte starts at 0xC0 instead of 0x80.
+	h.lookupStart = n.refIndex - 1
+	return h
+}
+
+// generate generates and returns the trie for n.
+func (b *trieBuilder) generate() (t *trie, err error) {
+	t = b.t
+	if len(b.valueBlocks) >= 1<<16 {
+		return nil, fmt.Errorf("maximum number of value blocks exceeded (%d > %d)", len(b.valueBlocks), 1<<16)
+	}
+	if len(b.lookupBlocks) >= 1<<16 {
+		return nil, fmt.Errorf("maximum number of lookup blocks exceeded (%d > %d)", len(b.lookupBlocks), 1<<16)
+	}
+	genValueBlock(t, b.valueBlocks[0])
+	genValueBlock(t, &trieNode{value: make([]uint32, 64)})
+	for i := 2; i < len(b.valueBlocks); i++ {
+		genValueBlock(t, b.valueBlocks[i])
+	}
+	n := &trieNode{index: make([]*trieNode, 64)}
+	genLookupBlock(t, n)
+	genLookupBlock(t, n)
+	genLookupBlock(t, n)
+	for i := 3; i < len(b.lookupBlocks); i++ {
+		genLookupBlock(t, b.lookupBlocks[i])
+	}
+	return b.t, nil
+}
+
+func (t *trie) printArrays(w io.Writer, name string) (n, size int, err error) {
+	p := func(f string, a ...interface{}) {
+		nn, e := fmt.Fprintf(w, f, a...)
+		n += nn
+		if err == nil {
+			err = e
+		}
+	}
+	nv := len(t.values)
+	p("// %sValues: %d entries, %d bytes\n", name, nv, nv*4)
+	p("// Block 2 is the null block.\n")
+	p("var %sValues = [%d]uint32 {", name, nv)
+	var printnewline bool
+	for i, v := range t.values {
+		if i%blockSize == 0 {
+			p("\n\t// Block %#x, offset %#x", i/blockSize, i)
+		}
+		if i%4 == 0 {
+			printnewline = true
+		}
+		if v != 0 {
+			if printnewline {
+				p("\n\t")
+				printnewline = false
+			}
+			p("%#04x:%#08x, ", i, v)
+		}
+	}
+	p("\n}\n\n")
+	ni := len(t.index)
+	p("// %sLookup: %d entries, %d bytes\n", name, ni, ni*2)
+	p("// Block 0 is the null block.\n")
+	p("var %sLookup = [%d]uint16 {", name, ni)
+	printnewline = false
+	for i, v := range t.index {
+		if i%blockSize == 0 {
+			p("\n\t// Block %#x, offset %#x", i/blockSize, i)
+		}
+		if i%8 == 0 {
+			printnewline = true
+		}
+		if v != 0 {
+			if printnewline {
+				p("\n\t")
+				printnewline = false
+			}
+			p("%#03x:%#02x, ", i, v)
+		}
+	}
+	p("\n}\n\n")
+	return n, nv*4 + ni*2, err
+}
+
+func (t *trie) printStruct(w io.Writer, handle *trieHandle, name string) (n, sz int, err error) {
+	const msg = "trie{ %sLookup[%d:], %sValues[%d:], %sLookup[:], %sValues[:]}"
+	n, err = fmt.Fprintf(w, msg, name, handle.lookupStart*blockSize, name, handle.valueStart*blockSize, name, name)
+	sz += int(reflect.TypeOf(trie{}).Size())
+	return
+}
