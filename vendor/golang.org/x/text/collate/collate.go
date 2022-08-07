@@ -344,4 +344,60 @@ func (c *Collator) keyFromElems(buf *Buffer, ws []colltab.Elem) {
 		}
 		// Derive the quaternary weights from the options and other levels.
 		// Note that we represent MaxQuaternary as 0xFF. The first byte of the
-		// represent
+		// representation of a primary weight is always smaller than 0xFF,
+		// so using this single byte value will compare correctly.
+		if !c.ignore[colltab.Quaternary] && c.alternate >= altShifted {
+			if c.alternate == altShiftTrimmed {
+				lastNonFFFF := len(buf.key)
+				buf.key = append(buf.key, 0)
+				for _, v := range ws {
+					if w := v.Quaternary(); w == colltab.MaxQuaternary {
+						buf.key = append(buf.key, 0xFF)
+					} else if w > 0 {
+						buf.key = appendPrimary(buf.key, w)
+						lastNonFFFF = len(buf.key)
+					}
+				}
+				buf.key = buf.key[:lastNonFFFF]
+			} else {
+				buf.key = append(buf.key, 0)
+				for _, v := range ws {
+					if w := v.Quaternary(); w == colltab.MaxQuaternary {
+						buf.key = append(buf.key, 0xFF)
+					} else if w > 0 {
+						buf.key = appendPrimary(buf.key, w)
+					}
+				}
+			}
+		}
+	}
+}
+
+func processWeights(vw alternateHandling, top uint32, wa []colltab.Elem) {
+	ignore := false
+	vtop := int(top)
+	switch vw {
+	case altShifted, altShiftTrimmed:
+		for i := range wa {
+			if p := wa[i].Primary(); p <= vtop && p != 0 {
+				wa[i] = colltab.MakeQuaternary(p)
+				ignore = true
+			} else if p == 0 {
+				if ignore {
+					wa[i] = colltab.Ignore
+				}
+			} else {
+				ignore = false
+			}
+		}
+	case altBlanked:
+		for i := range wa {
+			if p := wa[i].Primary(); p <= vtop && (ignore || p != 0) {
+				wa[i] = colltab.Ignore
+				ignore = true
+			} else {
+				ignore = false
+			}
+		}
+	}
+}
