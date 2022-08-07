@@ -192,4 +192,156 @@ func (c *Collator) compare() int {
 // Passing the buffer buf may avoid memory allocations.
 // The returned slice will point to an allocation in Buffer and will remain
 // valid until the next call to buf.Reset().
-func (c *Collator) Key(buf *Buffer, 
+func (c *Collator) Key(buf *Buffer, str []byte) []byte {
+	// See http://www.unicode.org/reports/tr10/#Main_Algorithm for more details.
+	buf.init()
+	return c.key(buf, c.getColElems(str))
+}
+
+// KeyFromString returns the collation key for str.
+// Passing the buffer buf may avoid memory allocations.
+// The returned slice will point to an allocation in Buffer and will retain
+// valid until the next call to buf.ResetKeys().
+func (c *Collator) KeyFromString(buf *Buffer, str string) []byte {
+	// See http://www.unicode.org/reports/tr10/#Main_Algorithm for more details.
+	buf.init()
+	return c.key(buf, c.getColElemsString(str))
+}
+
+func (c *Collator) key(buf *Buffer, w []colltab.Elem) []byte {
+	processWeights(c.alternate, c.t.Top(), w)
+	kn := len(buf.key)
+	c.keyFromElems(buf, w)
+	return buf.key[kn:]
+}
+
+func (c *Collator) getColElems(str []byte) []colltab.Elem {
+	i := c.iter(0)
+	i.SetInput(str)
+	for i.Next() {
+	}
+	return i.Elems
+}
+
+func (c *Collator) getColElemsString(str string) []colltab.Elem {
+	i := c.iter(0)
+	i.SetInputString(str)
+	for i.Next() {
+	}
+	return i.Elems
+}
+
+type iter struct {
+	wa [512]colltab.Elem
+
+	colltab.Iter
+	pce int
+}
+
+func (i *iter) init(c *Collator) {
+	i.Weighter = c.t
+	i.Elems = i.wa[:0]
+}
+
+func (i *iter) nextPrimary() int {
+	for {
+		for ; i.pce < i.N; i.pce++ {
+			if v := i.Elems[i.pce].Primary(); v != 0 {
+				i.pce++
+				return v
+			}
+		}
+		if !i.Next() {
+			return 0
+		}
+	}
+	panic("should not reach here")
+}
+
+func (i *iter) nextSecondary() int {
+	for ; i.pce < len(i.Elems); i.pce++ {
+		if v := i.Elems[i.pce].Secondary(); v != 0 {
+			i.pce++
+			return v
+		}
+	}
+	return 0
+}
+
+func (i *iter) prevSecondary() int {
+	for ; i.pce < len(i.Elems); i.pce++ {
+		if v := i.Elems[len(i.Elems)-i.pce-1].Secondary(); v != 0 {
+			i.pce++
+			return v
+		}
+	}
+	return 0
+}
+
+func (i *iter) nextTertiary() int {
+	for ; i.pce < len(i.Elems); i.pce++ {
+		if v := i.Elems[i.pce].Tertiary(); v != 0 {
+			i.pce++
+			return int(v)
+		}
+	}
+	return 0
+}
+
+func (i *iter) nextQuaternary() int {
+	for ; i.pce < len(i.Elems); i.pce++ {
+		if v := i.Elems[i.pce].Quaternary(); v != 0 {
+			i.pce++
+			return v
+		}
+	}
+	return 0
+}
+
+func appendPrimary(key []byte, p int) []byte {
+	// Convert to variable length encoding; supports up to 23 bits.
+	if p <= 0x7FFF {
+		key = append(key, uint8(p>>8), uint8(p))
+	} else {
+		key = append(key, uint8(p>>16)|0x80, uint8(p>>8), uint8(p))
+	}
+	return key
+}
+
+// keyFromElems converts the weights ws to a compact sequence of bytes.
+// The result will be appended to the byte buffer in buf.
+func (c *Collator) keyFromElems(buf *Buffer, ws []colltab.Elem) {
+	for _, v := range ws {
+		if w := v.Primary(); w > 0 {
+			buf.key = appendPrimary(buf.key, w)
+		}
+	}
+	if !c.ignore[colltab.Secondary] {
+		buf.key = append(buf.key, 0, 0)
+		// TODO: we can use one 0 if we can guarantee that all non-zero weights are > 0xFF.
+		if !c.backwards {
+			for _, v := range ws {
+				if w := v.Secondary(); w > 0 {
+					buf.key = append(buf.key, uint8(w>>8), uint8(w))
+				}
+			}
+		} else {
+			for i := len(ws) - 1; i >= 0; i-- {
+				if w := ws[i].Secondary(); w > 0 {
+					buf.key = append(buf.key, uint8(w>>8), uint8(w))
+				}
+			}
+		}
+	} else if c.caseLevel {
+		buf.key = append(buf.key, 0, 0)
+	}
+	if !c.ignore[colltab.Tertiary] || c.caseLevel {
+		buf.key = append(buf.key, 0, 0)
+		for _, v := range ws {
+			if w := v.Tertiary(); w > 0 {
+				buf.key = append(buf.key, uint8(w))
+			}
+		}
+		// Derive the quaternary weights from the options and other levels.
+		// Note that we represent MaxQuaternary as 0xFF. The first byte of the
+		// represent
