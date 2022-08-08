@@ -73,3 +73,9 @@ func (c *Collator) Sort(x Lister) {
 
 // SortStrings uses sort.Sort to sort the strings in x using the rules of c.
 func (c *Collator) SortStrings(x []string) {
+	c.sorter.init(len(x))
+	for i, s := range x {
+		c.sorter.keys[i] = c.KeyFromString(c.sorter.buf, s)
+	}
+	c.sorter.sort(sort.StringSlice(x))
+}
