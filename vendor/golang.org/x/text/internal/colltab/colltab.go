@@ -99,4 +99,7 @@ func parent(t language.Tag) language.Tag {
 	} else if (s != language.Script{}) {
 		result, _ = language.Raw.Compose(b, t.Extensions())
 	} else if (b != language.Base{}) {
-		result, _ = language.Raw.
+		result, _ = language.Raw.Compose(t.Extensions())
+	}
+	return result
+}
