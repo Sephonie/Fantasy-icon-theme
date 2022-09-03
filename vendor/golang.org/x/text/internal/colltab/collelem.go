@@ -213,3 +213,160 @@ func (ce Elem) Primary() int {
 	}
 	return int(ce&primaryValueMask) >> primaryShift
 }
+
+// Secondary returns the secondary collation weight for ce.
+func (ce Elem) Secondary() int {
+	switch ce & ceTypeMask {
+	case ceType1:
+		return int(uint8(ce))
+	case ceType2:
+		return minCompactSecondary + int((ce>>compactSecondaryShift)&0xF)
+	case ceType3or4:
+		if ce < ceType4 {
+			return defaultSecondary
+		}
+		return int(ce>>8) & 0xFFF
+	case ceTypeQ:
+		return 0
+	}
+	panic("should not reach here")
+}
+
+// Tertiary returns the tertiary collation weight for ce.
+func (ce Elem) Tertiary() uint8 {
+	if ce&hasTertiaryMask == 0 {
+		if ce&ceType3or4 == 0 {
+			return uint8(ce & 0x1F)
+		}
+		if ce&ceType4 == ceType4 {
+			return uint8(ce)
+		}
+		return uint8(ce>>24) & 0x1F // type 2
+	} else if ce&ceTypeMask == ceType1 {
+		return defaultTertiary
+	}
+	// ce is a quaternary value.
+	return 0
+}
+
+func (ce Elem) updateTertiary(t uint8) Elem {
+	if ce&ceTypeMask == ceType1 {
+		// convert to type 4
+		nce := ce & primaryValueMask
+		nce |= Elem(uint8(ce)-minCompactSecondary) << compactSecondaryShift
+		ce = nce
+	} else if ce&ceTypeMaskExt == ceType3or4 {
+		ce &= ^Elem(maxTertiary << 24)
+		return ce | (Elem(t) << 24)
+	} else {
+		// type 2 or 4
+		ce &= ^Elem(maxTertiary)
+	}
+	return ce | Elem(t)
+}
+
+// Quaternary returns the quaternary value if explicitly specified,
+// 0 if ce == Ignore, or MaxQuaternary otherwise.
+// Quaternary values are used only for shifted variants.
+func (ce Elem) Quaternary() int {
+	if ce&ceTypeMask == ceTypeQ {
+		return int(ce&primaryValueMask) >> primaryShift
+	} else if ce&ceIgnoreMask == Ignore {
+		return 0
+	}
+	return MaxQuaternary
+}
+
+// Weight returns the collation weight for the given level.
+func (ce Elem) Weight(l Level) int {
+	switch l {
+	case Primary:
+		return ce.Primary()
+	case Secondary:
+		return ce.Secondary()
+	case Tertiary:
+		return int(ce.Tertiary())
+	case Quaternary:
+		return ce.Quaternary()
+	}
+	return 0 // return 0 (ignore) for undefined levels.
+}
+
+// For contractions, collation elements are of the form
+// 110bbbbb bbbbbbbb iiiiiiii iiiinnnn, where
+//   - n* is the size of the first node in the contraction trie.
+//   - i* is the index of the first node in the contraction trie.
+//   - b* is the offset into the contraction collation element table.
+// See contract.go for details on the contraction trie.
+const (
+	maxNBits              = 4
+	maxTrieIndexBits      = 12
+	maxContractOffsetBits = 13
+)
+
+func splitContractIndex(ce Elem) (index, n, offset int) {
+	n = int(ce & (1<<maxNBits - 1))
+	ce >>= maxNBits
+	index = int(ce & (1<<maxTrieIndexBits - 1))
+	ce >>= maxTrieIndexBits
+	offset = int(ce & (1<<maxContractOffsetBits - 1))
+	return
+}
+
+// For expansions, Elems are of the form 11100000 00000000 bbbbbbbb bbbbbbbb,
+// where b* is the index into the expansion sequence table.
+const maxExpandIndexBits = 16
+
+func splitExpandIndex(ce Elem) (index int) {
+	return int(uint16(ce))
+}
+
+// Some runes can be expanded using NFKD decomposition. Instead of storing the full
+// sequence of collation elements, we decompose the rune and lookup the collation
+// elements for each rune in the decomposition and modify the tertiary weights.
+// The Elem, in this case, is of the form 11110000 00000000 wwwwwwww vvvvvvvv, where
+//   - v* is the replacement tertiary weight for the first rune,
+//   - w* is the replacement tertiary weight for the second rune,
+// Tertiary weights of subsequent runes should be replaced with maxTertiary.
+// See http://www.unicode.org/reports/tr10/#Compatibility_Decompositions for more details.
+func splitDecompose(ce Elem) (t1, t2 uint8) {
+	return uint8(ce), uint8(ce >> 8)
+}
+
+const (
+	// These constants were taken from http://www.unicode.org/versions/Unicode6.0.0/ch12.pdf.
+	minUnified       rune = 0x4E00
+	maxUnified            = 0x9FFF
+	minCompatibility      = 0xF900
+	maxCompatibility      = 0xFAFF
+	minRare               = 0x3400
+	maxRare               = 0x4DBF
+)
+const (
+	commonUnifiedOffset = 0x10000
+	rareUnifiedOffset   = 0x20000 // largest rune in common is U+FAFF
+	otherOffset         = 0x50000 // largest rune in rare is U+2FA1D
+	illegalOffset       = otherOffset + int(unicode.MaxRune)
+	maxPrimary          = illegalOffset + 1
+)
+
+// implicitPrimary returns the primary weight for the a rune
+// for which there is no entry for the rune in the collation table.
+// We take a different approach from the one specified in
+// http://unicode.org/reports/tr10/#Implicit_Weights,
+// but preserve the resulting relative ordering of the runes.
+func implicitPrimary(r rune) int {
+	if unicode.Is(unicode.Ideographic, r) {
+		if r >= minUnified && r <= maxUnified {
+			// The most common case for CJK.
+			return int(r) + commonUnifiedOffset
+		}
+		if r >= minCompatibility && r <= maxCompatibility {
+			// This will typically not hit. The DUCET explicitly specifies mappings
+			// for all characters that do not decompose.
+			return int(r) + commonUnifiedOffset
+		}
+		return int(r) + rareUnifiedOffset
+	}
+	return int(r) + otherOffset
+}
