@@ -245,4 +245,31 @@ func (t *Table) matchContractionString(w []Elem, ce Elem, suffix string) ([]Elem
 				if ccc := rune.LeadCCC(); ccc == 0 || prevCC >= ccc {
 					break
 				}
-				prevCC = ru
+				prevCC = rune.TrailCCC()
+				if pp := scan.scan(p); pp != p {
+					// Copy the interstitial runes for later processing.
+					bufn += copy(buf[bufn:], suffix[p0:p])
+					if scan.pindex == pp {
+						bufp = bufn
+					}
+					p, p0 = pp, pp
+				} else {
+					p += rune.Size()
+				}
+			}
+		}
+	}
+	// Append weights for the matched contraction, which may be an expansion.
+	i, n := scan.result()
+	ce = Elem(t.ContractElem[i+offset])
+	if ce.ctype() == ceNormal {
+		w = append(w, ce)
+	} else {
+		w = t.appendExpansion(w, ce)
+	}
+	// Append weights for the runes in the segment not part of the contraction.
+	for b, p := buf[:bufp], 0; len(b) > 0; b = b[p:] {
+		w, p = t.appendNext(w, source{bytes: b})
+	}
+	return w, n
+}
