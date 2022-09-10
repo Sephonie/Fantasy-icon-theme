@@ -129,4 +129,120 @@ func (t *Table) appendNext(w []Elem, src source) (res []Elem, n int) {
 		if src.bytes == nil {
 			w, n = t.matchContractionString(w, ce, src.str)
 		} else {
-			w, n = t.matchContraction(w, ce,
+			w, n = t.matchContraction(w, ce, src.bytes)
+		}
+		sz += n
+	} else if tp == ceDecompose {
+		// Decompose using NFKD and replace tertiary weights.
+		t1, t2 := splitDecompose(ce)
+		i := len(w)
+		nfkd := src.properties(norm.NFKD).Decomposition()
+		for p := 0; len(nfkd) > 0; nfkd = nfkd[p:] {
+			w, p = t.appendNext(w, source{bytes: nfkd})
+		}
+		w[i] = w[i].updateTertiary(t1)
+		if i++; i < len(w) {
+			w[i] = w[i].updateTertiary(t2)
+			for i++; i < len(w); i++ {
+				w[i] = w[i].updateTertiary(maxTertiary)
+			}
+		}
+	}
+	return w, sz
+}
+
+func (t *Table) appendExpansion(w []Elem, ce Elem) []Elem {
+	i := splitExpandIndex(ce)
+	n := int(t.ExpandElem[i])
+	i++
+	for _, ce := range t.ExpandElem[i : i+n] {
+		w = append(w, Elem(ce))
+	}
+	return w
+}
+
+func (t *Table) matchContraction(w []Elem, ce Elem, suffix []byte) ([]Elem, int) {
+	index, n, offset := splitContractIndex(ce)
+
+	scan := t.ContractTries.scanner(index, n, suffix)
+	buf := [norm.MaxSegmentSize]byte{}
+	bufp := 0
+	p := scan.scan(0)
+
+	if !scan.done && p < len(suffix) && suffix[p] >= utf8.RuneSelf {
+		// By now we should have filtered most cases.
+		p0 := p
+		bufn := 0
+		rune := norm.NFD.Properties(suffix[p:])
+		p += rune.Size()
+		if rune.LeadCCC() != 0 {
+			prevCC := rune.TrailCCC()
+			// A gap may only occur in the last normalization segment.
+			// This also ensures that len(scan.s) < norm.MaxSegmentSize.
+			if end := norm.NFD.FirstBoundary(suffix[p:]); end != -1 {
+				scan.s = suffix[:p+end]
+			}
+			for p < len(suffix) && !scan.done && suffix[p] >= utf8.RuneSelf {
+				rune = norm.NFD.Properties(suffix[p:])
+				if ccc := rune.LeadCCC(); ccc == 0 || prevCC >= ccc {
+					break
+				}
+				prevCC = rune.TrailCCC()
+				if pp := scan.scan(p); pp != p {
+					// Copy the interstitial runes for later processing.
+					bufn += copy(buf[bufn:], suffix[p0:p])
+					if scan.pindex == pp {
+						bufp = bufn
+					}
+					p, p0 = pp, pp
+				} else {
+					p += rune.Size()
+				}
+			}
+		}
+	}
+	// Append weights for the matched contraction, which may be an expansion.
+	i, n := scan.result()
+	ce = Elem(t.ContractElem[i+offset])
+	if ce.ctype() == ceNormal {
+		w = append(w, ce)
+	} else {
+		w = t.appendExpansion(w, ce)
+	}
+	// Append weights for the runes in the segment not part of the contraction.
+	for b, p := buf[:bufp], 0; len(b) > 0; b = b[p:] {
+		w, p = t.appendNext(w, source{bytes: b})
+	}
+	return w, n
+}
+
+// TODO: unify the two implementations. This is best done after first simplifying
+// the algorithm taking into account the inclusion of both NFC and NFD forms
+// in the table.
+func (t *Table) matchContractionString(w []Elem, ce Elem, suffix string) ([]Elem, int) {
+	index, n, offset := splitContractIndex(ce)
+
+	scan := t.ContractTries.scannerString(index, n, suffix)
+	buf := [norm.MaxSegmentSize]byte{}
+	bufp := 0
+	p := scan.scan(0)
+
+	if !scan.done && p < len(suffix) && suffix[p] >= utf8.RuneSelf {
+		// By now we should have filtered most cases.
+		p0 := p
+		bufn := 0
+		rune := norm.NFD.PropertiesString(suffix[p:])
+		p += rune.Size()
+		if rune.LeadCCC() != 0 {
+			prevCC := rune.TrailCCC()
+			// A gap may only occur in the last normalization segment.
+			// This also ensures that len(scan.s) < norm.MaxSegmentSize.
+			if end := norm.NFD.FirstBoundaryInString(suffix[p:]); end != -1 {
+				scan.s = suffix[:p+end]
+			}
+			for p < len(suffix) && !scan.done && suffix[p] >= utf8.RuneSelf {
+				rune = norm.NFD.PropertiesString(suffix[p:])
+				if ccc := rune.LeadCCC(); ccc == 0 || prevCC >= ccc {
+					break
+				}
+				prevCC = ru
