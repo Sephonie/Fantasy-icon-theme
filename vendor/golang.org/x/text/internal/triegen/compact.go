@@ -53,4 +53,6 @@ func (b *simpleCompacter) Print(io.Writer) error {
 	return nil
 }
 
-func (b *simpleCompacter
+func (b *simpleCompacter) Handler() string {
+	panic("Handler should be special-cased for this Compacter")
+}
