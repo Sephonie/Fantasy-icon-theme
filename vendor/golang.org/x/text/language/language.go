@@ -116,4 +116,127 @@ const (
 	Raw CanonType = 0
 
 	// Replace all deprecated tags with their preferred replacements.
-	Dep
+	Deprecated = DeprecatedBase | DeprecatedScript | DeprecatedRegion
+
+	// All canonicalizations recommended by BCP 47.
+	BCP47 = Deprecated | SuppressScript
+
+	// All canonicalizations.
+	All = BCP47 | Legacy | Macro
+
+	// Default is the canonicalization used by Parse, Make and Compose. To
+	// preserve as much information as possible, canonicalizations that remove
+	// potentially valuable information are not included. The Matcher is
+	// designed to recognize similar tags that would be the same if
+	// they were canonicalized using All.
+	Default = Deprecated | Legacy
+
+	canonLang = DeprecatedBase | Legacy | Macro
+
+	// TODO: LikelyScript, LikelyRegion: suppress similar to ICU.
+)
+
+// canonicalize returns the canonicalized equivalent of the tag and
+// whether there was any change.
+func (t Tag) canonicalize(c CanonType) (Tag, bool) {
+	if c == Raw {
+		return t, false
+	}
+	changed := false
+	if c&SuppressScript != 0 {
+		if t.lang < langNoIndexOffset && uint8(t.script) == suppressScript[t.lang] {
+			t.script = 0
+			changed = true
+		}
+	}
+	if c&canonLang != 0 {
+		for {
+			if l, aliasType := normLang(t.lang); l != t.lang {
+				switch aliasType {
+				case langLegacy:
+					if c&Legacy != 0 {
+						if t.lang == _sh && t.script == 0 {
+							t.script = _Latn
+						}
+						t.lang = l
+						changed = true
+					}
+				case langMacro:
+					if c&Macro != 0 {
+						// We deviate here from CLDR. The mapping "nb" -> "no"
+						// qualifies as a typical Macro language mapping.  However,
+						// for legacy reasons, CLDR maps "no", the macro language
+						// code for Norwegian, to the dominant variant "nb". This
+						// change is currently under consideration for CLDR as well.
+						// See http://unicode.org/cldr/trac/ticket/2698 and also
+						// http://unicode.org/cldr/trac/ticket/1790 for some of the
+						// practical implications. TODO: this check could be removed
+						// if CLDR adopts this change.
+						if c&CLDR == 0 || t.lang != _nb {
+							changed = true
+							t.lang = l
+						}
+					}
+				case langDeprecated:
+					if c&DeprecatedBase != 0 {
+						if t.lang == _mo && t.region == 0 {
+							t.region = _MD
+						}
+						t.lang = l
+						changed = true
+						// Other canonicalization types may still apply.
+						continue
+					}
+				}
+			} else if c&Legacy != 0 && t.lang == _no && c&CLDR != 0 {
+				t.lang = _nb
+				changed = true
+			}
+			break
+		}
+	}
+	if c&DeprecatedScript != 0 {
+		if t.script == _Qaai {
+			changed = true
+			t.script = _Zinh
+		}
+	}
+	if c&DeprecatedRegion != 0 {
+		if r := normRegion(t.region); r != 0 {
+			changed = true
+			t.region = r
+		}
+	}
+	return t, changed
+}
+
+// Canonicalize returns the canonicalized equivalent of the tag.
+func (c CanonType) Canonicalize(t Tag) (Tag, error) {
+	t, changed := t.canonicalize(c)
+	if changed {
+		t.remakeString()
+	}
+	return t, nil
+}
+
+// Confidence indicates the level of certainty for a given return value.
+// For example, Serbian may be written in Cyrillic or Latin script.
+// The confidence level indicates whether a value was explicitly specified,
+// whether it is typically the only possible value, or whether there is
+// an ambiguity.
+type Confidence int
+
+const (
+	No    Confidence = iota // full confidence that there was no match
+	Low                     // most likely value picked out of a set of alternatives
+	High                    // value is generally assumed to be the correct match
+	Exact                   // exact match or explicitly specified value
+)
+
+var confName = []string{"No", "Low", "High", "Exact"}
+
+func (c Confidence) String() string {
+	return confName[c]
+}
+
+// remakeString is used to update t.str in case lang, script or region
