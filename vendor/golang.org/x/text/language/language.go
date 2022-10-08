@@ -478,3 +478,135 @@ func nextToken(s string) (t, tail string) {
 type Extension struct {
 	s string
 }
+
+// String returns the string representation of the extension, including the
+// type tag.
+func (e Extension) String() string {
+	return e.s
+}
+
+// ParseExtension parses s as an extension and returns it on success.
+func ParseExtension(s string) (e Extension, err error) {
+	scan := makeScannerString(s)
+	var end int
+	if n := len(scan.token); n != 1 {
+		return Extension{}, errSyntax
+	}
+	scan.toLower(0, len(scan.b))
+	end = parseExtension(&scan)
+	if end != len(s) {
+		return Extension{}, errSyntax
+	}
+	return Extension{string(scan.b)}, nil
+}
+
+// Type returns the one-byte extension type of e. It returns 0 for the zero
+// exception.
+func (e Extension) Type() byte {
+	if e.s == "" {
+		return 0
+	}
+	return e.s[0]
+}
+
+// Tokens returns the list of tokens of e.
+func (e Extension) Tokens() []string {
+	return strings.Split(e.s, "-")
+}
+
+// Extension returns the extension of type x for tag t. It will return
+// false for ok if t does not have the requested extension. The returned
+// extension will be invalid in this case.
+func (t Tag) Extension(x byte) (ext Extension, ok bool) {
+	for i := int(t.pExt); i < len(t.str)-1; {
+		var ext string
+		i, ext = getExtension(t.str, i)
+		if ext[0] == x {
+			return Extension{ext}, true
+		}
+	}
+	return Extension{}, false
+}
+
+// Extensions returns all extensions of t.
+func (t Tag) Extensions() []Extension {
+	e := []Extension{}
+	for i := int(t.pExt); i < len(t.str)-1; {
+		var ext string
+		i, ext = getExtension(t.str, i)
+		e = append(e, Extension{ext})
+	}
+	return e
+}
+
+// TypeForKey returns the type associated with the given key, where key and type
+// are of the allowed values defined for the Unicode locale extension ('u') in
+// http://www.unicode.org/reports/tr35/#Unicode_Language_and_Locale_Identifiers.
+// TypeForKey will traverse the inheritance chain to get the correct value.
+func (t Tag) TypeForKey(key string) string {
+	if start, end, _ := t.findTypeForKey(key); end != start {
+		return t.str[start:end]
+	}
+	return ""
+}
+
+var (
+	errPrivateUse       = errors.New("cannot set a key on a private use tag")
+	errInvalidArguments = errors.New("invalid key or type")
+)
+
+// SetTypeForKey returns a new Tag with the key set to type, where key and type
+// are of the allowed values defined for the Unicode locale extension ('u') in
+// http://www.unicode.org/reports/tr35/#Unicode_Language_and_Locale_Identifiers.
+// An empty value removes an existing pair with the same key.
+func (t Tag) SetTypeForKey(key, value string) (Tag, error) {
+	if t.private() {
+		return t, errPrivateUse
+	}
+	if len(key) != 2 {
+		return t, errInvalidArguments
+	}
+
+	// Remove the setting if value is "".
+	if value == "" {
+		start, end, _ := t.findTypeForKey(key)
+		if start != end {
+			// Remove key tag and leading '-'.
+			start -= 4
+
+			// Remove a possible empty extension.
+			if (end == len(t.str) || t.str[end+2] == '-') && t.str[start-2] == '-' {
+				start -= 2
+			}
+			if start == int(t.pVariant) && end == len(t.str) {
+				t.str = ""
+				t.pVariant, t.pExt = 0, 0
+			} else {
+				t.str = fmt.Sprintf("%s%s", t.str[:start], t.str[end:])
+			}
+		}
+		return t, nil
+	}
+
+	if len(value) < 3 || len(value) > 8 {
+		return t, errInvalidArguments
+	}
+
+	var (
+		buf    [maxCoreSize + maxSimpleUExtensionSize]byte
+		uStart int // start of the -u extension.
+	)
+
+	// Generate the tag string if needed.
+	if t.str == "" {
+		uStart = t.genCoreBytes(buf[:])
+		buf[uStart] = '-'
+		uStart++
+	}
+
+	// Create new key-type pair and parse it to verify.
+	b := buf[uStart:]
+	copy(b, "u-")
+	copy(b[2:], key)
+	b[4] = '-'
+	
