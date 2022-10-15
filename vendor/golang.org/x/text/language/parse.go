@@ -723,3 +723,138 @@ func (s sortVariant) Swap(i, j int) {
 
 func (s sortVariant) Less(i, j int) bool {
 	return variantIndex[s[i]] < variantIndex[s[j]]
+}
+
+func findExt(list []string, x byte) int {
+	for i, e := range list {
+		if e[0] == x {
+			return i
+		}
+	}
+	return -1
+}
+
+// getExtension returns the name, body and end position of the extension.
+func getExtension(s string, p int) (end int, ext string) {
+	if s[p] == '-' {
+		p++
+	}
+	if s[p] == 'x' {
+		return len(s), s[p:]
+	}
+	end = nextExtension(s, p)
+	return end, s[p:end]
+}
+
+// nextExtension finds the next extension within the string, searching
+// for the -<char>- pattern from position p.
+// In the fast majority of cases, language tags will have at most
+// one extension and extensions tend to be small.
+func nextExtension(s string, p int) int {
+	for n := len(s) - 3; p < n; {
+		if s[p] == '-' {
+			if s[p+2] == '-' {
+				return p
+			}
+			p += 3
+		} else {
+			p++
+		}
+	}
+	return len(s)
+}
+
+var errInvalidWeight = errors.New("ParseAcceptLanguage: invalid weight")
+
+// ParseAcceptLanguage parses the contents of an Accept-Language header as
+// defined in http://www.ietf.org/rfc/rfc2616.txt and returns a list of Tags and
+// a list of corresponding quality weights. It is more permissive than RFC 2616
+// and may return non-nil slices even if the input is not valid.
+// The Tags will be sorted by highest weight first and then by first occurrence.
+// Tags with a weight of zero will be dropped. An error will be returned if the
+// input could not be parsed.
+func ParseAcceptLanguage(s string) (tag []Tag, q []float32, err error) {
+	var entry string
+	for s != "" {
+		if entry, s = split(s, ','); entry == "" {
+			continue
+		}
+
+		entry, weight := split(entry, ';')
+
+		// Scan the language.
+		t, err := Parse(entry)
+		if err != nil {
+			id, ok := acceptFallback[entry]
+			if !ok {
+				return nil, nil, err
+			}
+			t = Tag{lang: id}
+		}
+
+		// Scan the optional weight.
+		w := 1.0
+		if weight != "" {
+			weight = consume(weight, 'q')
+			weight = consume(weight, '=')
+			// consume returns the empty string when a token could not be
+			// consumed, resulting in an error for ParseFloat.
+			if w, err = strconv.ParseFloat(weight, 32); err != nil {
+				return nil, nil, errInvalidWeight
+			}
+			// Drop tags with a quality weight of 0.
+			if w <= 0 {
+				continue
+			}
+		}
+
+		tag = append(tag, t)
+		q = append(q, float32(w))
+	}
+	sortStable(&tagSort{tag, q})
+	return tag, q, nil
+}
+
+// consume removes a leading token c from s and returns the result or the empty
+// string if there is no such token.
+func consume(s string, c byte) string {
+	if s == "" || s[0] != c {
+		return ""
+	}
+	return strings.TrimSpace(s[1:])
+}
+
+func split(s string, c byte) (head, tail string) {
+	if i := strings.IndexByte(s, c); i >= 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
+	}
+	return strings.TrimSpace(s), ""
+}
+
+// Add hack mapping to deal with a small number of cases that that occur
+// in Accept-Language (with reasonable frequency).
+var acceptFallback = map[string]langID{
+	"english": _en,
+	"deutsch": _de,
+	"italian": _it,
+	"french":  _fr,
+	"*":       _mul, // defined in the spec to match all languages.
+}
+
+type tagSort struct {
+	tag []Tag
+	q   []float32
+}
+
+func (s *tagSort) Len() int {
+	return len(s.q)
+}
+
+func (s *tagSort) Less(i, j int) bool {
+	return s.q[i] > s.q[j]
+}
+
+func (s *tagSort) Swap(i, j int) {
+	s.tag[i], s.tag[j] = s.tag[j], s.tag[i]
+	s.q[i], s.q[j] = s.q[j], s.q[i]
+}
