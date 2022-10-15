@@ -727,4 +727,134 @@ func CompactIndex(t Tag) (index int, ok bool) {
 			// Strip all but the 'va' entry.
 			variant := t.TypeForKey("va")
 			t, _ = Raw.Compose(b, s, r)
-			t
+			t, _ = t.SetTypeForKey("va", variant)
+		}
+		if len(t.str) > 0 {
+			// We have some variants.
+			for i, s := range specialTags {
+				if s == t {
+					return i + 1, true
+				}
+			}
+			return 0, false
+		}
+	}
+	// No variants specified: just compare core components.
+	// The key has the form lllssrrr, where l, s, and r are nibbles for
+	// respectively the langID, scriptID, and regionID.
+	key := uint32(b.langID) << (8 + 12)
+	key |= uint32(s.scriptID) << 12
+	key |= uint32(r.regionID)
+	x, ok := coreTags[key]
+	return int(x), ok
+}
+
+// Base is an ISO 639 language code, used for encoding the base language
+// of a language tag.
+type Base struct {
+	langID
+}
+
+// ParseBase parses a 2- or 3-letter ISO 639 code.
+// It returns a ValueError if s is a well-formed but unknown language identifier
+// or another error if another error occurred.
+func ParseBase(s string) (Base, error) {
+	if n := len(s); n < 2 || 3 < n {
+		return Base{}, errSyntax
+	}
+	var buf [3]byte
+	l, err := getLangID(buf[:copy(buf[:], s)])
+	return Base{l}, err
+}
+
+// Script is a 4-letter ISO 15924 code for representing scripts.
+// It is idiomatically represented in title case.
+type Script struct {
+	scriptID
+}
+
+// ParseScript parses a 4-letter ISO 15924 code.
+// It returns a ValueError if s is a well-formed but unknown script identifier
+// or another error if another error occurred.
+func ParseScript(s string) (Script, error) {
+	if len(s) != 4 {
+		return Script{}, errSyntax
+	}
+	var buf [4]byte
+	sc, err := getScriptID(script, buf[:copy(buf[:], s)])
+	return Script{sc}, err
+}
+
+// Region is an ISO 3166-1 or UN M.49 code for representing countries and regions.
+type Region struct {
+	regionID
+}
+
+// EncodeM49 returns the Region for the given UN M.49 code.
+// It returns an error if r is not a valid code.
+func EncodeM49(r int) (Region, error) {
+	rid, err := getRegionM49(r)
+	return Region{rid}, err
+}
+
+// ParseRegion parses a 2- or 3-letter ISO 3166-1 or a UN M.49 code.
+// It returns a ValueError if s is a well-formed but unknown region identifier
+// or another error if another error occurred.
+func ParseRegion(s string) (Region, error) {
+	if n := len(s); n < 2 || 3 < n {
+		return Region{}, errSyntax
+	}
+	var buf [3]byte
+	r, err := getRegionID(buf[:copy(buf[:], s)])
+	return Region{r}, err
+}
+
+// IsCountry returns whether this region is a country or autonomous area. This
+// includes non-standard definitions from CLDR.
+func (r Region) IsCountry() bool {
+	if r.regionID == 0 || r.IsGroup() || r.IsPrivateUse() && r.regionID != _XK {
+		return false
+	}
+	return true
+}
+
+// IsGroup returns whether this region defines a collection of regions. This
+// includes non-standard definitions from CLDR.
+func (r Region) IsGroup() bool {
+	if r.regionID == 0 {
+		return false
+	}
+	return int(regionInclusion[r.regionID]) < len(regionContainment)
+}
+
+// Contains returns whether Region c is contained by Region r. It returns true
+// if c == r.
+func (r Region) Contains(c Region) bool {
+	return r.regionID.contains(c.regionID)
+}
+
+func (r regionID) contains(c regionID) bool {
+	if r == c {
+		return true
+	}
+	g := regionInclusion[r]
+	if g >= nRegionGroups {
+		return false
+	}
+	m := regionContainment[g]
+
+	d := regionInclusion[c]
+	b := regionInclusionBits[d]
+
+	// A contained country may belong to multiple disjoint groups. Matching any
+	// of these indicates containment. If the contained region is a group, it
+	// must strictly be a subset.
+	if d >= nRegionGroups {
+		return b&m != 0
+	}
+	return b&^m == 0
+}
+
+var errNoTLD = errors.New("language: region is not a valid ccTLD")
+
+// TLD returns the country code top-level domai
