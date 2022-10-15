@@ -857,4 +857,51 @@ func (r regionID) contains(c regionID) bool {
 
 var errNoTLD = errors.New("language: region is not a valid ccTLD")
 
-// TLD returns the country code top-level domai
+// TLD returns the country code top-level domain (ccTLD). UK is returned for GB.
+// In all other cases it returns either the region itself or an error.
+//
+// This method may return an error for a region for which there exists a
+// canonical form with a ccTLD. To get that ccTLD canonicalize r first. The
+// region will already be canonicalized it was obtained from a Tag that was
+// obtained using any of the default methods.
+func (r Region) TLD() (Region, error) {
+	// See http://en.wikipedia.org/wiki/Country_code_top-level_domain for the
+	// difference between ISO 3166-1 and IANA ccTLD.
+	if r.regionID == _GB {
+		r = Region{_UK}
+	}
+	if (r.typ() & ccTLD) == 0 {
+		return Region{}, errNoTLD
+	}
+	return r, nil
+}
+
+// Canonicalize returns the region or a possible replacement if the region is
+// deprecated. It will not return a replacement for deprecated regions that
+// are split into multiple regions.
+func (r Region) Canonicalize() Region {
+	if cr := normRegion(r.regionID); cr != 0 {
+		return Region{cr}
+	}
+	return r
+}
+
+// Variant represents a registered variant of a language as defined by BCP 47.
+type Variant struct {
+	variant string
+}
+
+// ParseVariant parses and returns a Variant. An error is returned if s is not
+// a valid variant.
+func ParseVariant(s string) (Variant, error) {
+	s = strings.ToLower(s)
+	if _, ok := variantIndex[s]; ok {
+		return Variant{s}, nil
+	}
+	return Variant{}, mkErrInvalid([]byte(s))
+}
+
+// String returns the string representation of the variant.
+func (v Variant) String() string {
+	return v.variant
+}
