@@ -133,4 +133,127 @@ func (p *paragraph) run() {
 		p.embeddingLevel = p.determineParagraphEmbeddingLevel(0, p.Len())
 	}
 
-	// Initialize result levels to paragr
+	// Initialize result levels to paragraph embedding level.
+	p.resultLevels = make([]level, p.Len())
+	setLevels(p.resultLevels, p.embeddingLevel)
+
+	// 2) Explicit levels and directions
+	// Rules X1-X8.
+	p.determineExplicitEmbeddingLevels()
+
+	// Rule X9.
+	// We do not remove the embeddings, the overrides, the PDFs, and the BNs
+	// from the string explicitly. But they are not copied into isolating run
+	// sequences when they are created, so they are removed for all
+	// practical purposes.
+
+	// Rule X10.
+	// Run remainder of algorithm one isolating run sequence at a time
+	for _, seq := range p.determineIsolatingRunSequences() {
+		// 3) resolving weak types
+		// Rules W1-W7.
+		seq.resolveWeakTypes()
+
+		// 4a) resolving paired brackets
+		// Rule N0
+		resolvePairedBrackets(seq)
+
+		// 4b) resolving neutral types
+		// Rules N1-N3.
+		seq.resolveNeutralTypes()
+
+		// 5) resolving implicit embedding levels
+		// Rules I1, I2.
+		seq.resolveImplicitLevels()
+
+		// Apply the computed levels and types
+		seq.applyLevelsAndTypes()
+	}
+
+	// Assign appropriate levels to 'hide' LREs, RLEs, LROs, RLOs, PDFs, and
+	// BNs. This is for convenience, so the resulting level array will have
+	// a value for every character.
+	p.assignLevelsToCharactersRemovedByX9()
+}
+
+// determineMatchingIsolates determines the matching PDI for each isolate
+// initiator and vice versa.
+//
+// Definition BD9.
+//
+// At the end of this function:
+//
+//  - The member variable matchingPDI is set to point to the index of the
+//    matching PDI character for each isolate initiator character. If there is
+//    no matching PDI, it is set to the length of the input text. For other
+//    characters, it is set to -1.
+//  - The member variable matchingIsolateInitiator is set to point to the
+//    index of the matching isolate initiator character for each PDI character.
+//    If there is no matching isolate initiator, or the character is not a PDI,
+//    it is set to -1.
+func (p *paragraph) determineMatchingIsolates() {
+	p.matchingPDI = make([]int, p.Len())
+	p.matchingIsolateInitiator = make([]int, p.Len())
+
+	for i := range p.matchingIsolateInitiator {
+		p.matchingIsolateInitiator[i] = -1
+	}
+
+	for i := range p.matchingPDI {
+		p.matchingPDI[i] = -1
+
+		if t := p.resultTypes[i]; t.in(LRI, RLI, FSI) {
+			depthCounter := 1
+			for j := i + 1; j < p.Len(); j++ {
+				if u := p.resultTypes[j]; u.in(LRI, RLI, FSI) {
+					depthCounter++
+				} else if u == PDI {
+					if depthCounter--; depthCounter == 0 {
+						p.matchingPDI[i] = j
+						p.matchingIsolateInitiator[j] = i
+						break
+					}
+				}
+			}
+			if p.matchingPDI[i] == -1 {
+				p.matchingPDI[i] = p.Len()
+			}
+		}
+	}
+}
+
+// determineParagraphEmbeddingLevel reports the resolved paragraph direction of
+// the substring limited by the given range [start, end).
+//
+// Determines the paragraph level based on rules P2, P3. This is also used
+// in rule X5c to find if an FSI should resolve to LRI or RLI.
+func (p *paragraph) determineParagraphEmbeddingLevel(start, end int) level {
+	var strongType Class = unknownClass
+
+	// Rule P2.
+	for i := start; i < end; i++ {
+		if t := p.resultTypes[i]; t.in(L, AL, R) {
+			strongType = t
+			break
+		} else if t.in(FSI, LRI, RLI) {
+			i = p.matchingPDI[i] // skip over to the matching PDI
+			if i > end {
+				log.Panic("assert (i <= end)")
+			}
+		}
+	}
+	// Rule P3.
+	switch strongType {
+	case unknownClass: // none found
+		// default embedding level when no strong types found is 0.
+		return 0
+	case L:
+		return 0
+	default: // AL, R
+		return 1
+	}
+}
+
+const maxDepth = 125
+
+// This stack will store the em
