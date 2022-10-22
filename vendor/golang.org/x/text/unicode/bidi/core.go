@@ -256,4 +256,126 @@ func (p *paragraph) determineParagraphEmbeddingLevel(start, end int) level {
 
 const maxDepth = 125
 
-// This stack will store the em
+// This stack will store the embedding levels and override and isolated
+// statuses
+type directionalStatusStack struct {
+	stackCounter        int
+	embeddingLevelStack [maxDepth + 1]level
+	overrideStatusStack [maxDepth + 1]Class
+	isolateStatusStack  [maxDepth + 1]bool
+}
+
+func (s *directionalStatusStack) empty()     { s.stackCounter = 0 }
+func (s *directionalStatusStack) pop()       { s.stackCounter-- }
+func (s *directionalStatusStack) depth() int { return s.stackCounter }
+
+func (s *directionalStatusStack) push(level level, overrideStatus Class, isolateStatus bool) {
+	s.embeddingLevelStack[s.stackCounter] = level
+	s.overrideStatusStack[s.stackCounter] = overrideStatus
+	s.isolateStatusStack[s.stackCounter] = isolateStatus
+	s.stackCounter++
+}
+
+func (s *directionalStatusStack) lastEmbeddingLevel() level {
+	return s.embeddingLevelStack[s.stackCounter-1]
+}
+
+func (s *directionalStatusStack) lastDirectionalOverrideStatus() Class {
+	return s.overrideStatusStack[s.stackCounter-1]
+}
+
+func (s *directionalStatusStack) lastDirectionalIsolateStatus() bool {
+	return s.isolateStatusStack[s.stackCounter-1]
+}
+
+// Determine explicit levels using rules X1 - X8
+func (p *paragraph) determineExplicitEmbeddingLevels() {
+	var stack directionalStatusStack
+	var overflowIsolateCount, overflowEmbeddingCount, validIsolateCount int
+
+	// Rule X1.
+	stack.push(p.embeddingLevel, ON, false)
+
+	for i, t := range p.resultTypes {
+		// Rules X2, X3, X4, X5, X5a, X5b, X5c
+		switch t {
+		case RLE, LRE, RLO, LRO, RLI, LRI, FSI:
+			isIsolate := t.in(RLI, LRI, FSI)
+			isRTL := t.in(RLE, RLO, RLI)
+
+			// override if this is an FSI that resolves to RLI
+			if t == FSI {
+				isRTL = (p.determineParagraphEmbeddingLevel(i+1, p.matchingPDI[i]) == 1)
+			}
+			if isIsolate {
+				p.resultLevels[i] = stack.lastEmbeddingLevel()
+				if stack.lastDirectionalOverrideStatus() != ON {
+					p.resultTypes[i] = stack.lastDirectionalOverrideStatus()
+				}
+			}
+
+			var newLevel level
+			if isRTL {
+				// least greater odd
+				newLevel = (stack.lastEmbeddingLevel() + 1) | 1
+			} else {
+				// least greater even
+				newLevel = (stack.lastEmbeddingLevel() + 2) &^ 1
+			}
+
+			if newLevel <= maxDepth && overflowIsolateCount == 0 && overflowEmbeddingCount == 0 {
+				if isIsolate {
+					validIsolateCount++
+				}
+				// Push new embedding level, override status, and isolated
+				// status.
+				// No check for valid stack counter, since the level check
+				// suffices.
+				switch t {
+				case LRO:
+					stack.push(newLevel, L, isIsolate)
+				case RLO:
+					stack.push(newLevel, R, isIsolate)
+				default:
+					stack.push(newLevel, ON, isIsolate)
+				}
+				// Not really part of the spec
+				if !isIsolate {
+					p.resultLevels[i] = newLevel
+				}
+			} else {
+				// This is an invalid explicit formatting character,
+				// so apply the "Otherwise" part of rules X2-X5b.
+				if isIsolate {
+					overflowIsolateCount++
+				} else { // !isIsolate
+					if overflowIsolateCount == 0 {
+						overflowEmbeddingCount++
+					}
+				}
+			}
+
+		// Rule X6a
+		case PDI:
+			if overflowIsolateCount > 0 {
+				overflowIsolateCount--
+			} else if validIsolateCount == 0 {
+				// do nothing
+			} else {
+				overflowEmbeddingCount = 0
+				for !stack.lastDirectionalIsolateStatus() {
+					stack.pop()
+				}
+				stack.pop()
+				validIsolateCount--
+			}
+			p.resultLevels[i] = stack.lastEmbeddingLevel()
+
+		// Rule X7
+		case PDF:
+			// Not really part of the spec
+			p.resultLevels[i] = stack.lastEmbeddingLevel()
+
+			if overflowIsolateCount > 0 {
+				// do nothing
+			} else if overflowEmbedd
