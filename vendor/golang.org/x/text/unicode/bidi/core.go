@@ -378,4 +378,146 @@ func (p *paragraph) determineExplicitEmbeddingLevels() {
 
 			if overflowIsolateCount > 0 {
 				// do nothing
-			} else if overflowEmbedd
+			} else if overflowEmbeddingCount > 0 {
+				overflowEmbeddingCount--
+			} else if !stack.lastDirectionalIsolateStatus() && stack.depth() >= 2 {
+				stack.pop()
+			}
+
+		case B: // paragraph separator.
+			// Rule X8.
+
+			// These values are reset for clarity, in this implementation B
+			// can only occur as the last code in the array.
+			stack.empty()
+			overflowIsolateCount = 0
+			overflowEmbeddingCount = 0
+			validIsolateCount = 0
+			p.resultLevels[i] = p.embeddingLevel
+
+		default:
+			p.resultLevels[i] = stack.lastEmbeddingLevel()
+			if stack.lastDirectionalOverrideStatus() != ON {
+				p.resultTypes[i] = stack.lastDirectionalOverrideStatus()
+			}
+		}
+	}
+}
+
+type isolatingRunSequence struct {
+	p *paragraph
+
+	indexes []int // indexes to the original string
+
+	types          []Class // type of each character using the index
+	resolvedLevels []level // resolved levels after application of rules
+	level          level
+	sos, eos       Class
+}
+
+func (i *isolatingRunSequence) Len() int { return len(i.indexes) }
+
+func maxLevel(a, b level) level {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// Rule X10, second bullet: Determine the start-of-sequence (sos) and end-of-sequence (eos) types,
+// 			 either L or R, for each isolating run sequence.
+func (p *paragraph) isolatingRunSequence(indexes []int) *isolatingRunSequence {
+	length := len(indexes)
+	types := make([]Class, length)
+	for i, x := range indexes {
+		types[i] = p.resultTypes[x]
+	}
+
+	// assign level, sos and eos
+	prevChar := indexes[0] - 1
+	for prevChar >= 0 && isRemovedByX9(p.initialTypes[prevChar]) {
+		prevChar--
+	}
+	prevLevel := p.embeddingLevel
+	if prevChar >= 0 {
+		prevLevel = p.resultLevels[prevChar]
+	}
+
+	var succLevel level
+	lastType := types[length-1]
+	if lastType.in(LRI, RLI, FSI) {
+		succLevel = p.embeddingLevel
+	} else {
+		// the first character after the end of run sequence
+		limit := indexes[length-1] + 1
+		for ; limit < p.Len() && isRemovedByX9(p.initialTypes[limit]); limit++ {
+
+		}
+		succLevel = p.embeddingLevel
+		if limit < p.Len() {
+			succLevel = p.resultLevels[limit]
+		}
+	}
+	level := p.resultLevels[indexes[0]]
+	return &isolatingRunSequence{
+		p:       p,
+		indexes: indexes,
+		types:   types,
+		level:   level,
+		sos:     typeForLevel(maxLevel(prevLevel, level)),
+		eos:     typeForLevel(maxLevel(succLevel, level)),
+	}
+}
+
+// Resolving weak types Rules W1-W7.
+//
+// Note that some weak types (EN, AN) remain after this processing is
+// complete.
+func (s *isolatingRunSequence) resolveWeakTypes() {
+
+	// on entry, only these types remain
+	s.assertOnly(L, R, AL, EN, ES, ET, AN, CS, B, S, WS, ON, NSM, LRI, RLI, FSI, PDI)
+
+	// Rule W1.
+	// Changes all NSMs.
+	preceedingCharacterType := s.sos
+	for i, t := range s.types {
+		if t == NSM {
+			s.types[i] = preceedingCharacterType
+		} else {
+			if t.in(LRI, RLI, FSI, PDI) {
+				preceedingCharacterType = ON
+			}
+			preceedingCharacterType = t
+		}
+	}
+
+	// Rule W2.
+	// EN does not change at the start of the run, because sos != AL.
+	for i, t := range s.types {
+		if t == EN {
+			for j := i - 1; j >= 0; j-- {
+				if t := s.types[j]; t.in(L, R, AL) {
+					if t == AL {
+						s.types[i] = AN
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// Rule W3.
+	for i, t := range s.types {
+		if t == AL {
+			s.types[i] = R
+		}
+	}
+
+	// Rule W4.
+	// Since there must be values on both sides for this rule to have an
+	// effect, the scan skips the first and last value.
+	//
+	// Although the scan proceeds left to right, and changes the type
+	// values in a way that would appear to affect the computations
+	// later in the scan, there is actually no problem. A chang
