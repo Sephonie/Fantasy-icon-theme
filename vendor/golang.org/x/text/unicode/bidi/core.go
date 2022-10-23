@@ -678,4 +678,131 @@ func (s *isolatingRunSequence) resolveImplicitLevels() {
 				s.resolvedLevels[i] += 2
 			}
 		}
-	} 
+	} else { // odd level
+		for i, t := range s.types {
+			// Rule I2.
+			if t == R {
+				// no change
+			} else { // t == L || t == AN || t == EN
+				s.resolvedLevels[i] += 1
+			}
+		}
+	}
+}
+
+// Applies the levels and types resolved in rules W1-I2 to the
+// resultLevels array.
+func (s *isolatingRunSequence) applyLevelsAndTypes() {
+	for i, x := range s.indexes {
+		s.p.resultTypes[x] = s.types[i]
+		s.p.resultLevels[x] = s.resolvedLevels[i]
+	}
+}
+
+// Return the limit of the run consisting only of the types in validSet
+// starting at index. This checks the value at index, and will return
+// index if that value is not in validSet.
+func (s *isolatingRunSequence) findRunLimit(index int, validSet ...Class) int {
+loop:
+	for ; index < len(s.types); index++ {
+		t := s.types[index]
+		for _, valid := range validSet {
+			if t == valid {
+				continue loop
+			}
+		}
+		return index // didn't find a match in validSet
+	}
+	return len(s.types)
+}
+
+// Algorithm validation. Assert that all values in types are in the
+// provided set.
+func (s *isolatingRunSequence) assertOnly(codes ...Class) {
+loop:
+	for i, t := range s.types {
+		for _, c := range codes {
+			if t == c {
+				continue loop
+			}
+		}
+		log.Panicf("invalid bidi code %v present in assertOnly at position %d", t, s.indexes[i])
+	}
+}
+
+// determineLevelRuns returns an array of level runs. Each level run is
+// described as an array of indexes into the input string.
+//
+// Determines the level runs. Rule X9 will be applied in determining the
+// runs, in the way that makes sure the characters that are supposed to be
+// removed are not included in the runs.
+func (p *paragraph) determineLevelRuns() [][]int {
+	run := []int{}
+	allRuns := [][]int{}
+	currentLevel := implicitLevel
+
+	for i := range p.initialTypes {
+		if !isRemovedByX9(p.initialTypes[i]) {
+			if p.resultLevels[i] != currentLevel {
+				// we just encountered a new run; wrap up last run
+				if currentLevel >= 0 { // only wrap it up if there was a run
+					allRuns = append(allRuns, run)
+					run = nil
+				}
+				// Start new run
+				currentLevel = p.resultLevels[i]
+			}
+			run = append(run, i)
+		}
+	}
+	// Wrap up the final run, if any
+	if len(run) > 0 {
+		allRuns = append(allRuns, run)
+	}
+	return allRuns
+}
+
+// Definition BD13. Determine isolating run sequences.
+func (p *paragraph) determineIsolatingRunSequences() []*isolatingRunSequence {
+	levelRuns := p.determineLevelRuns()
+
+	// Compute the run that each character belongs to
+	runForCharacter := make([]int, p.Len())
+	for i, run := range levelRuns {
+		for _, index := range run {
+			runForCharacter[index] = i
+		}
+	}
+
+	sequences := []*isolatingRunSequence{}
+
+	var currentRunSequence []int
+
+	for _, run := range levelRuns {
+		first := run[0]
+		if p.initialTypes[first] != PDI || p.matchingIsolateInitiator[first] == -1 {
+			currentRunSequence = nil
+			// int run = i;
+			for {
+				// Copy this level run into currentRunSequence
+				currentRunSequence = append(currentRunSequence, run...)
+
+				last := currentRunSequence[len(currentRunSequence)-1]
+				lastT := p.initialTypes[last]
+				if lastT.in(LRI, RLI, FSI) && p.matchingPDI[last] != p.Len() {
+					run = levelRuns[runForCharacter[p.matchingPDI[last]]]
+				} else {
+					break
+				}
+			}
+			sequences = append(sequences, p.isolatingRunSequence(currentRunSequence))
+		}
+	}
+	return sequences
+}
+
+// Assign level information to characters removed by rule X9. This is for
+// ease of relating the level information to the original input data. Note
+// that the levels assigned to these codes are arbitrary, they're chosen so
+// as to avoid breaking level runs.
+func (p *paragraph) assignLevelsToCharactersRemovedByX9() 
