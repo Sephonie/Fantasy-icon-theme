@@ -520,4 +520,162 @@ func (s *isolatingRunSequence) resolveWeakTypes() {
 	//
 	// Although the scan proceeds left to right, and changes the type
 	// values in a way that would appear to affect the computations
-	// later in the scan, there is actually no problem. A chang
+	// later in the scan, there is actually no problem. A change in the
+	// current value can only affect the value to its immediate right,
+	// and only affect it if it is ES or CS. But the current value can
+	// only change if the value to its right is not ES or CS. Thus
+	// either the current value will not change, or its change will have
+	// no effect on the remainder of the analysis.
+
+	for i := 1; i < s.Len()-1; i++ {
+		t := s.types[i]
+		if t == ES || t == CS {
+			prevSepType := s.types[i-1]
+			succSepType := s.types[i+1]
+			if prevSepType == EN && succSepType == EN {
+				s.types[i] = EN
+			} else if s.types[i] == CS && prevSepType == AN && succSepType == AN {
+				s.types[i] = AN
+			}
+		}
+	}
+
+	// Rule W5.
+	for i, t := range s.types {
+		if t == ET {
+			// locate end of sequence
+			runStart := i
+			runEnd := s.findRunLimit(runStart, ET)
+
+			// check values at ends of sequence
+			t := s.sos
+			if runStart > 0 {
+				t = s.types[runStart-1]
+			}
+			if t != EN {
+				t = s.eos
+				if runEnd < len(s.types) {
+					t = s.types[runEnd]
+				}
+			}
+			if t == EN {
+				setTypes(s.types[runStart:runEnd], EN)
+			}
+			// continue at end of sequence
+			i = runEnd
+		}
+	}
+
+	// Rule W6.
+	for i, t := range s.types {
+		if t.in(ES, ET, CS) {
+			s.types[i] = ON
+		}
+	}
+
+	// Rule W7.
+	for i, t := range s.types {
+		if t == EN {
+			// set default if we reach start of run
+			prevStrongType := s.sos
+			for j := i - 1; j >= 0; j-- {
+				t = s.types[j]
+				if t == L || t == R { // AL's have been changed to R
+					prevStrongType = t
+					break
+				}
+			}
+			if prevStrongType == L {
+				s.types[i] = L
+			}
+		}
+	}
+}
+
+// 6) resolving neutral types Rules N1-N2.
+func (s *isolatingRunSequence) resolveNeutralTypes() {
+
+	// on entry, only these types can be in resultTypes
+	s.assertOnly(L, R, EN, AN, B, S, WS, ON, RLI, LRI, FSI, PDI)
+
+	for i, t := range s.types {
+		switch t {
+		case WS, ON, B, S, RLI, LRI, FSI, PDI:
+			// find bounds of run of neutrals
+			runStart := i
+			runEnd := s.findRunLimit(runStart, B, S, WS, ON, RLI, LRI, FSI, PDI)
+
+			// determine effective types at ends of run
+			var leadType, trailType Class
+
+			// Note that the character found can only be L, R, AN, or
+			// EN.
+			if runStart == 0 {
+				leadType = s.sos
+			} else {
+				leadType = s.types[runStart-1]
+				if leadType.in(AN, EN) {
+					leadType = R
+				}
+			}
+			if runEnd == len(s.types) {
+				trailType = s.eos
+			} else {
+				trailType = s.types[runEnd]
+				if trailType.in(AN, EN) {
+					trailType = R
+				}
+			}
+
+			var resolvedType Class
+			if leadType == trailType {
+				// Rule N1.
+				resolvedType = leadType
+			} else {
+				// Rule N2.
+				// Notice the embedding level of the run is used, not
+				// the paragraph embedding level.
+				resolvedType = typeForLevel(s.level)
+			}
+
+			setTypes(s.types[runStart:runEnd], resolvedType)
+
+			// skip over run of (former) neutrals
+			i = runEnd
+		}
+	}
+}
+
+func setLevels(levels []level, newLevel level) {
+	for i := range levels {
+		levels[i] = newLevel
+	}
+}
+
+func setTypes(types []Class, newType Class) {
+	for i := range types {
+		types[i] = newType
+	}
+}
+
+// 7) resolving implicit embedding levels Rules I1, I2.
+func (s *isolatingRunSequence) resolveImplicitLevels() {
+
+	// on entry, only these types can be in resultTypes
+	s.assertOnly(L, R, EN, AN)
+
+	s.resolvedLevels = make([]level, len(s.types))
+	setLevels(s.resolvedLevels, s.level)
+
+	if (s.level & 1) == 0 { // even level
+		for i, t := range s.types {
+			// Rule I1.
+			if t == L {
+				// no change
+			} else if t == R {
+				s.resolvedLevels[i] += 1
+			} else { // t == AN || t == EN
+				s.resolvedLevels[i] += 2
+			}
+		}
+	} 
