@@ -805,4 +805,115 @@ func (p *paragraph) determineIsolatingRunSequences() []*isolatingRunSequence {
 // ease of relating the level information to the original input data. Note
 // that the levels assigned to these codes are arbitrary, they're chosen so
 // as to avoid breaking level runs.
-func (p *paragraph) assignLevelsToCharactersRemovedByX9() 
+func (p *paragraph) assignLevelsToCharactersRemovedByX9() {
+	for i, t := range p.initialTypes {
+		if t.in(LRE, RLE, LRO, RLO, PDF, BN) {
+			p.resultTypes[i] = t
+			p.resultLevels[i] = -1
+		}
+	}
+	// now propagate forward the levels information (could have
+	// propagated backward, the main thing is not to introduce a level
+	// break where one doesn't already exist).
+
+	if p.resultLevels[0] == -1 {
+		p.resultLevels[0] = p.embeddingLevel
+	}
+	for i := 1; i < len(p.initialTypes); i++ {
+		if p.resultLevels[i] == -1 {
+			p.resultLevels[i] = p.resultLevels[i-1]
+		}
+	}
+	// Embedding information is for informational purposes only so need not be
+	// adjusted.
+}
+
+//
+// Output
+//
+
+// getLevels computes levels array breaking lines at offsets in linebreaks.
+// Rule L1.
+//
+// The linebreaks array must include at least one value. The values must be
+// in strictly increasing order (no duplicates) between 1 and the length of
+// the text, inclusive. The last value must be the length of the text.
+func (p *paragraph) getLevels(linebreaks []int) []level {
+	// Note that since the previous processing has removed all
+	// P, S, and WS values from resultTypes, the values referred to
+	// in these rules are the initial types, before any processing
+	// has been applied (including processing of overrides).
+	//
+	// This example implementation has reinserted explicit format codes
+	// and BN, in order that the levels array correspond to the
+	// initial text. Their final placement is not normative.
+	// These codes are treated like WS in this implementation,
+	// so they don't interrupt sequences of WS.
+
+	validateLineBreaks(linebreaks, p.Len())
+
+	result := append([]level(nil), p.resultLevels...)
+
+	// don't worry about linebreaks since if there is a break within
+	// a series of WS values preceding S, the linebreak itself
+	// causes the reset.
+	for i, t := range p.initialTypes {
+		if t.in(B, S) {
+			// Rule L1, clauses one and two.
+			result[i] = p.embeddingLevel
+
+			// Rule L1, clause three.
+			for j := i - 1; j >= 0; j-- {
+				if isWhitespace(p.initialTypes[j]) { // including format codes
+					result[j] = p.embeddingLevel
+				} else {
+					break
+				}
+			}
+		}
+	}
+
+	// Rule L1, clause four.
+	start := 0
+	for _, limit := range linebreaks {
+		for j := limit - 1; j >= start; j-- {
+			if isWhitespace(p.initialTypes[j]) { // including format codes
+				result[j] = p.embeddingLevel
+			} else {
+				break
+			}
+		}
+		start = limit
+	}
+
+	return result
+}
+
+// getReordering returns the reordering of lines from a visual index to a
+// logical index for line breaks at the given offsets.
+//
+// Lines are concatenated from left to right. So for example, the fifth
+// character from the left on the third line is
+//
+// 		getReordering(linebreaks)[linebreaks[1] + 4]
+//
+// (linebreaks[1] is the position after the last character of the second
+// line, which is also the index of the first character on the third line,
+// and adding four gets the fifth character from the left).
+//
+// The linebreaks array must include at least one value. The values must be
+// in strictly increasing order (no duplicates) between 1 and the length of
+// the text, inclusive. The last value must be the length of the text.
+func (p *paragraph) getReordering(linebreaks []int) []int {
+	validateLineBreaks(linebreaks, p.Len())
+
+	return computeMultilineReordering(p.getLevels(linebreaks), linebreaks)
+}
+
+// Return multiline reordering array for a given level array. Reordering
+// does not occur across a line break.
+func computeMultilineReordering(levels []level, linebreaks []int) []int {
+	result := make([]int, len(levels))
+
+	start := 0
+	for _, li
