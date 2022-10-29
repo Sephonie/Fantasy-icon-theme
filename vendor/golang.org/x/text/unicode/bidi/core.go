@@ -916,4 +916,143 @@ func computeMultilineReordering(levels []level, linebreaks []int) []int {
 	result := make([]int, len(levels))
 
 	start := 0
-	for _, li
+	for _, limit := range linebreaks {
+		tempLevels := make([]level, limit-start)
+		copy(tempLevels, levels[start:])
+
+		for j, order := range computeReordering(tempLevels) {
+			result[start+j] = order + start
+		}
+		start = limit
+	}
+	return result
+}
+
+// Return reordering array for a given level array. This reorders a single
+// line. The reordering is a visual to logical map. For example, the
+// leftmost char is string.charAt(order[0]). Rule L2.
+func computeReordering(levels []level) []int {
+	result := make([]int, len(levels))
+	// initialize order
+	for i := range result {
+		result[i] = i
+	}
+
+	// locate highest level found on line.
+	// Note the rules say text, but no reordering across line bounds is
+	// performed, so this is sufficient.
+	highestLevel := level(0)
+	lowestOddLevel := level(maxDepth + 2)
+	for _, level := range levels {
+		if level > highestLevel {
+			highestLevel = level
+		}
+		if level&1 != 0 && level < lowestOddLevel {
+			lowestOddLevel = level
+		}
+	}
+
+	for level := highestLevel; level >= lowestOddLevel; level-- {
+		for i := 0; i < len(levels); i++ {
+			if levels[i] >= level {
+				// find range of text at or above this level
+				start := i
+				limit := i + 1
+				for limit < len(levels) && levels[limit] >= level {
+					limit++
+				}
+
+				for j, k := start, limit-1; j < k; j, k = j+1, k-1 {
+					result[j], result[k] = result[k], result[j]
+				}
+				// skip to end of level run
+				i = limit
+			}
+		}
+	}
+
+	return result
+}
+
+// isWhitespace reports whether the type is considered a whitespace type for the
+// line break rules.
+func isWhitespace(c Class) bool {
+	switch c {
+	case LRE, RLE, LRO, RLO, PDF, LRI, RLI, FSI, PDI, BN, WS:
+		return true
+	}
+	return false
+}
+
+// isRemovedByX9 reports whether the type is one of the types removed in X9.
+func isRemovedByX9(c Class) bool {
+	switch c {
+	case LRE, RLE, LRO, RLO, PDF, BN:
+		return true
+	}
+	return false
+}
+
+// typeForLevel reports the strong type (L or R) corresponding to the level.
+func typeForLevel(level level) Class {
+	if (level & 0x1) == 0 {
+		return L
+	}
+	return R
+}
+
+// TODO: change validation to not panic
+
+func validateTypes(types []Class) {
+	if len(types) == 0 {
+		log.Panic("types is null")
+	}
+	for i, t := range types[:len(types)-1] {
+		if t == B {
+			log.Panicf("B type before end of paragraph at index: %d", i)
+		}
+	}
+}
+
+func validateParagraphEmbeddingLevel(embeddingLevel level) {
+	if embeddingLevel != implicitLevel &&
+		embeddingLevel != 0 &&
+		embeddingLevel != 1 {
+		log.Panicf("illegal paragraph embedding level: %d", embeddingLevel)
+	}
+}
+
+func validateLineBreaks(linebreaks []int, textLength int) {
+	prev := 0
+	for i, next := range linebreaks {
+		if next <= prev {
+			log.Panicf("bad linebreak: %d at index: %d", next, i)
+		}
+		prev = next
+	}
+	if prev != textLength {
+		log.Panicf("last linebreak was %d, want %d", prev, textLength)
+	}
+}
+
+func validatePbTypes(pairTypes []bracketType) {
+	if len(pairTypes) == 0 {
+		log.Panic("pairTypes is null")
+	}
+	for i, pt := range pairTypes {
+		switch pt {
+		case bpNone, bpOpen, bpClose:
+		default:
+			log.Panicf("illegal pairType value at %d: %v", i, pairTypes[i])
+		}
+	}
+}
+
+func validatePbValues(pairValues []rune, pairTypes []bracketType) {
+	if pairValues == nil {
+		log.Panic("pairValues is null")
+	}
+	if len(pairTypes) != len(pairValues) {
+		log.Panic("pairTypes is different length from pairValues")
+	}
+}
