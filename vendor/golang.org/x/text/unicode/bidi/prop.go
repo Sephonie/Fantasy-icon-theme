@@ -190,3 +190,18 @@ func LookupString(s string) (p Properties, sz int) {
 		}
 		o := uint32(i)<<6 + uint32(c1)
 		i = bidiIndex[o]
+		c2 := s[2]
+		if c2 < 0x80 || 0xC0 <= c2 {
+			return Properties{}, 1
+		}
+		o = uint32(i)<<6 + uint32(c2)
+		i = bidiIndex[o]
+		c3 := s[3]
+		if c3 < 0x80 || 0xC0 <= c3 {
+			return Properties{}, 1
+		}
+		return Properties{entry: trie.lookupValue(uint32(i), c3)}, 4
+	}
+	// Illegal rune
+	return Properties{}, 1
+}
