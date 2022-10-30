@@ -56,4 +56,138 @@ func (t *bidiTrie) lookup(s []byte) (v uint8, sz int) {
 		i := bidiIndex[c0]
 		c1 := s[1]
 		if c1 < 0x80 || 0xC0 <= c1 {
-			return 0, 1 // Illegal UTF-8: not a continua
+			return 0, 1 // Illegal UTF-8: not a continuation byte.
+		}
+		o := uint32(i)<<6 + uint32(c1)
+		i = bidiIndex[o]
+		c2 := s[2]
+		if c2 < 0x80 || 0xC0 <= c2 {
+			return 0, 2 // Illegal UTF-8: not a continuation byte.
+		}
+		o = uint32(i)<<6 + uint32(c2)
+		i = bidiIndex[o]
+		c3 := s[3]
+		if c3 < 0x80 || 0xC0 <= c3 {
+			return 0, 3 // Illegal UTF-8: not a continuation byte.
+		}
+		return t.lookupValue(uint32(i), c3), 4
+	}
+	// Illegal rune
+	return 0, 1
+}
+
+// lookupUnsafe returns the trie value for the first UTF-8 encoding in s.
+// s must start with a full and valid UTF-8 encoded rune.
+func (t *bidiTrie) lookupUnsafe(s []byte) uint8 {
+	c0 := s[0]
+	if c0 < 0x80 { // is ASCII
+		return bidiValues[c0]
+	}
+	i := bidiIndex[c0]
+	if c0 < 0xE0 { // 2-byte UTF-8
+		return t.lookupValue(uint32(i), s[1])
+	}
+	i = bidiIndex[uint32(i)<<6+uint32(s[1])]
+	if c0 < 0xF0 { // 3-byte UTF-8
+		return t.lookupValue(uint32(i), s[2])
+	}
+	i = bidiIndex[uint32(i)<<6+uint32(s[2])]
+	if c0 < 0xF8 { // 4-byte UTF-8
+		return t.lookupValue(uint32(i), s[3])
+	}
+	return 0
+}
+
+// lookupString returns the trie value for the first UTF-8 encoding in s and
+// the width in bytes of this encoding. The size will be 0 if s does not
+// hold enough bytes to complete the encoding. len(s) must be greater than 0.
+func (t *bidiTrie) lookupString(s string) (v uint8, sz int) {
+	c0 := s[0]
+	switch {
+	case c0 < 0x80: // is ASCII
+		return bidiValues[c0], 1
+	case c0 < 0xC2:
+		return 0, 1 // Illegal UTF-8: not a starter, not ASCII.
+	case c0 < 0xE0: // 2-byte UTF-8
+		if len(s) < 2 {
+			return 0, 0
+		}
+		i := bidiIndex[c0]
+		c1 := s[1]
+		if c1 < 0x80 || 0xC0 <= c1 {
+			return 0, 1 // Illegal UTF-8: not a continuation byte.
+		}
+		return t.lookupValue(uint32(i), c1), 2
+	case c0 < 0xF0: // 3-byte UTF-8
+		if len(s) < 3 {
+			return 0, 0
+		}
+		i := bidiIndex[c0]
+		c1 := s[1]
+		if c1 < 0x80 || 0xC0 <= c1 {
+			return 0, 1 // Illegal UTF-8: not a continuation byte.
+		}
+		o := uint32(i)<<6 + uint32(c1)
+		i = bidiIndex[o]
+		c2 := s[2]
+		if c2 < 0x80 || 0xC0 <= c2 {
+			return 0, 2 // Illegal UTF-8: not a continuation byte.
+		}
+		return t.lookupValue(uint32(i), c2), 3
+	case c0 < 0xF8: // 4-byte UTF-8
+		if len(s) < 4 {
+			return 0, 0
+		}
+		i := bidiIndex[c0]
+		c1 := s[1]
+		if c1 < 0x80 || 0xC0 <= c1 {
+			return 0, 1 // Illegal UTF-8: not a continuation byte.
+		}
+		o := uint32(i)<<6 + uint32(c1)
+		i = bidiIndex[o]
+		c2 := s[2]
+		if c2 < 0x80 || 0xC0 <= c2 {
+			return 0, 2 // Illegal UTF-8: not a continuation byte.
+		}
+		o = uint32(i)<<6 + uint32(c2)
+		i = bidiIndex[o]
+		c3 := s[3]
+		if c3 < 0x80 || 0xC0 <= c3 {
+			return 0, 3 // Illegal UTF-8: not a continuation byte.
+		}
+		return t.lookupValue(uint32(i), c3), 4
+	}
+	// Illegal rune
+	return 0, 1
+}
+
+// lookupStringUnsafe returns the trie value for the first UTF-8 encoding in s.
+// s must start with a full and valid UTF-8 encoded rune.
+func (t *bidiTrie) lookupStringUnsafe(s string) uint8 {
+	c0 := s[0]
+	if c0 < 0x80 { // is ASCII
+		return bidiValues[c0]
+	}
+	i := bidiIndex[c0]
+	if c0 < 0xE0 { // 2-byte UTF-8
+		return t.lookupValue(uint32(i), s[1])
+	}
+	i = bidiIndex[uint32(i)<<6+uint32(s[1])]
+	if c0 < 0xF0 { // 3-byte UTF-8
+		return t.lookupValue(uint32(i), s[2])
+	}
+	i = bidiIndex[uint32(i)<<6+uint32(s[2])]
+	if c0 < 0xF8 { // 4-byte UTF-8
+		return t.lookupValue(uint32(i), s[3])
+	}
+	return 0
+}
+
+// bidiTrie. Total size: 15744 bytes (15.38 KiB). Checksum: b4c3b70954803b86.
+type bidiTrie struct{}
+
+func newBidiTrie(i int) *bidiTrie {
+	return &bidiTrie{}
+}
+
+// lookupValue determines the type of block n and looks up the v
