@@ -75,4 +75,56 @@ func (d Draft) String() string {
 	return drafts[len(drafts)-1-int(d)]
 }
 
-// SetDraftLevel sets which draft levels to include in 
+// SetDraftLevel sets which draft levels to include in the evaluated LDML.
+// Any draft element for which the draft level is higher than lev will be excluded.
+// If multiple draft levels are available for a single element, the one with the
+// lowest draft level will be selected, unless preferDraft is true, in which case
+// the highest draft will be chosen.
+// It is assumed that the underlying LDML is canonicalized.
+func (cldr *CLDR) SetDraftLevel(lev Draft, preferDraft bool) {
+	// TODO: implement
+	cldr.resolved = make(map[string]*LDML)
+}
+
+// RawLDML returns the LDML XML for id in unresolved form.
+// id must be one of the strings returned by Locales.
+func (cldr *CLDR) RawLDML(loc string) *LDML {
+	return cldr.locale[loc]
+}
+
+// LDML returns the fully resolved LDML XML for loc, which must be one of
+// the strings returned by Locales.
+func (cldr *CLDR) LDML(loc string) (*LDML, error) {
+	return cldr.resolve(loc)
+}
+
+// Supplemental returns the parsed supplemental data. If no such data was parsed,
+// nil is returned.
+func (cldr *CLDR) Supplemental() *SupplementalData {
+	return cldr.supp
+}
+
+// Locales returns the locales for which there exist files.
+// Valid sublocales for which there is no file are not included.
+// The root locale is always sorted first.
+func (cldr *CLDR) Locales() []string {
+	loc := []string{"root"}
+	hasRoot := false
+	for l, _ := range cldr.locale {
+		if l == "root" {
+			hasRoot = true
+			continue
+		}
+		loc = append(loc, l)
+	}
+	sort.Strings(loc[1:])
+	if !hasRoot {
+		return loc[1:]
+	}
+	return loc
+}
+
+// Get fills in the fields of x based on the XPath path.
+func Get(e Elem, path string) (res Elem, err error) {
+	return walkXPath(e, path)
+}
