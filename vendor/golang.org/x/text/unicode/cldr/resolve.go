@@ -179,4 +179,138 @@ func walkXPath(e Elem, path string) (res Elem, err error) {
 				if m[2] == "" {
 					m[2] = "type"
 					if m[3] = e.GetCommon().Default(); m[3] == "" {
-						return nil, fmt.
+						return nil, fmt.Errorf("cldr: type selector or default value needed for element %s", m[1])
+					}
+				}
+				for ; i < v.Len(); i++ {
+					vi := v.Index(i)
+					key, err := findField(vi.Elem(), m[2])
+					if err != nil {
+						return nil, err
+					}
+					key = reflect.Indirect(key)
+					if key.Kind() == reflect.String && key.String() == m[3] {
+						break
+					}
+				}
+			}
+			if i == v.Len() || v.Index(i).IsNil() {
+				return nil, fmt.Errorf("no %s found with %s==%s", m[1], m[2], m[3])
+			}
+			e = v.Index(i).Interface().(Elem)
+		case reflect.Ptr:
+			if v.IsNil() {
+				return nil, fmt.Errorf("cldr: element %q not found within element %q", m[1], e.GetCommon().name)
+			}
+			var ok bool
+			if e, ok = v.Interface().(Elem); !ok {
+				return nil, fmt.Errorf("cldr: %q is not an XML element", m[1])
+			} else if m[2] != "" || m[3] != "" {
+				return nil, fmt.Errorf("cldr: no type selector allowed for element %s", m[1])
+			}
+		default:
+			return nil, fmt.Errorf("cldr: %q is not an XML element", m[1])
+		}
+	}
+	return e, nil
+}
+
+const absPrefix = "//ldml/"
+
+func (cldr *CLDR) resolveAlias(e Elem, src, path string) (res Elem, err error) {
+	if src != "locale" {
+		if !strings.HasPrefix(path, absPrefix) {
+			return nil, fmt.Errorf("cldr: expected absolute path, found %q", path)
+		}
+		path = path[len(absPrefix):]
+		if e, err = cldr.resolve(src); err != nil {
+			return nil, err
+		}
+	}
+	return walkXPath(e, path)
+}
+
+func (cldr *CLDR) resolveAndMergeAlias(e Elem) error {
+	alias := e.GetCommon().Alias
+	if alias == nil {
+		return nil
+	}
+	a, err := cldr.resolveAlias(e, alias.Source, alias.Path)
+	if err != nil {
+		return fmt.Errorf("%v: error evaluating path %q: %v", getPath(e), alias.Path, err)
+	}
+	// Ensure alias node was already evaluated. TODO: avoid double evaluation.
+	err = cldr.resolveAndMergeAlias(a)
+	v := reflect.ValueOf(e).Elem()
+	for i := iter(reflect.ValueOf(a).Elem()); !i.done(); i.next() {
+		if vv := i.value(); vv.Kind() != reflect.Ptr || !vv.IsNil() {
+			if _, attr := xmlName(i.field()); !attr {
+				v.FieldByIndex(i.index).Set(vv)
+			}
+		}
+	}
+	return err
+}
+
+func (cldr *CLDR) aliasResolver() visitor {
+	return func(v reflect.Value) (err error) {
+		if e, ok := v.Addr().Interface().(Elem); ok {
+			err = cldr.resolveAndMergeAlias(e)
+			if err == nil && blocking[e.GetCommon().name] {
+				return stopDescent
+			}
+		}
+		return err
+	}
+}
+
+// elements within blocking elements do not inherit.
+// Taken from CLDR's supplementalMetaData.xml.
+var blocking = map[string]bool{
+	"identity":         true,
+	"supplementalData": true,
+	"cldrTest":         true,
+	"collation":        true,
+	"transform":        true,
+}
+
+// Distinguishing attributes affect inheritance; two elements with different
+// distinguishing attributes are treated as different for purposes of inheritance,
+// except when such attributes occur in the indicated elements.
+// Taken from CLDR's supplementalMetaData.xml.
+var distinguishing = map[string][]string{
+	"key":        nil,
+	"request_id": nil,
+	"id":         nil,
+	"registry":   nil,
+	"alt":        nil,
+	"iso4217":    nil,
+	"iso3166":    nil,
+	"mzone":      nil,
+	"from":       nil,
+	"to":         nil,
+	"type": []string{
+		"abbreviationFallback",
+		"default",
+		"mapping",
+		"measurementSystem",
+		"preferenceOrdering",
+	},
+	"numberSystem": nil,
+}
+
+func in(set []string, s string) bool {
+	for _, v := range set {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// attrKey computes a key based on the distinguishable attributes of
+// an element and it's values.
+func attrKey(v reflect.Value, exclude ...string) string {
+	parts := []string{}
+	ename := v.Interface().(Elem).GetCommon().name
+	v = 
