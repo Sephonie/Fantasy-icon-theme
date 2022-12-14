@@ -571,4 +571,32 @@ func (cldr *CLDR) resolve(loc string) (res *LDML, err error) {
 		}
 		v, err = cldr.inheritFields(reflect.ValueOf(x).Elem(), reflect.ValueOf(parent).Elem())
 		x = v.Interface().(*LDML)
-		linkEn
+		linkEnclosing(nil, x)
+	}
+	if err != nil {
+		return nil, err
+	}
+	cldr.resolved[loc] = x
+	return x, err
+}
+
+// finalize finalizes the initialization of the raw LDML structs.  It also
+// removed unwanted fields, as specified by filter, so that they will not
+// be unnecessarily evaluated.
+func (cldr *CLDR) finalize(filter []string) {
+	for _, x := range cldr.locale {
+		if filter != nil {
+			v := reflect.ValueOf(x).Elem()
+			t := v.Type()
+			for i := 0; i < v.NumField(); i++ {
+				f := t.Field(i)
+				name, _ := xmlName(f)
+				if name != "" && name != "identity" && !in(filter, name) {
+					v.Field(i).Set(reflect.Zero(f.Type))
+				}
+			}
+		}
+		linkEnclosing(nil, x) // for resolving aliases and paths
+		setNames(x, "ldml")
+	}
+}
