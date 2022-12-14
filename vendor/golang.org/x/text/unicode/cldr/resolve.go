@@ -442,4 +442,133 @@ func (cldr *CLDR) inheritFields(v, parent reflect.Value) (res reflect.Value, err
 		case reflect.Ptr:
 			if f.Type.Elem().Kind() == reflect.Struct {
 				if !vf.IsNil() {
-					if vf, err =
+					if vf, err = cldr.inheritStructPtr(vf, pf); err != nil {
+						return reflect.Value{}, err
+					}
+					vf.Interface().(Elem).setEnclosing(nv.Interface().(Elem))
+					nv.Elem().FieldByIndex(i.index).Set(vf)
+				} else if !pf.IsNil() {
+					n := cldr.newNode(pf.Elem(), v)
+					if vf, err = cldr.inheritStructPtr(n, pf); err != nil {
+						return reflect.Value{}, err
+					}
+					vf.Interface().(Elem).setEnclosing(nv.Interface().(Elem))
+					nv.Elem().FieldByIndex(i.index).Set(vf)
+				}
+			}
+		case reflect.Slice:
+			vf, err := cldr.inheritSlice(nv.Elem(), vf, pf)
+			if err != nil {
+				return reflect.Zero(t), err
+			}
+			nv.Elem().FieldByIndex(i.index).Set(vf)
+		}
+	}
+	return nv, nil
+}
+
+func root(e Elem) *LDML {
+	for ; e.enclosing() != nil; e = e.enclosing() {
+	}
+	return e.(*LDML)
+}
+
+// inheritStructPtr first merges possible aliases in with v and then inherits
+// any underspecified elements from parent.
+func (cldr *CLDR) inheritStructPtr(v, parent reflect.Value) (r reflect.Value, err error) {
+	if !v.IsNil() {
+		e := v.Interface().(Elem).GetCommon()
+		alias := e.Alias
+		if alias == nil && !parent.IsNil() {
+			alias = parent.Interface().(Elem).GetCommon().Alias
+		}
+		if alias != nil {
+			a, err := cldr.resolveAlias(v.Interface().(Elem), alias.Source, alias.Path)
+			if a != nil {
+				if v, err = cldr.inheritFields(v.Elem(), reflect.ValueOf(a).Elem()); err != nil {
+					return reflect.Value{}, err
+				}
+			}
+		}
+		if !parent.IsNil() {
+			return cldr.inheritFields(v.Elem(), parent.Elem())
+		}
+	} else if parent.IsNil() {
+		panic("should not reach here")
+	}
+	return v, nil
+}
+
+// Must be slice of struct pointers.
+func (cldr *CLDR) inheritSlice(enc, v, parent reflect.Value) (res reflect.Value, err error) {
+	t := v.Type()
+	index := make(map[string]reflect.Value)
+	if !v.IsNil() {
+		for i := 0; i < v.Len(); i++ {
+			vi := v.Index(i)
+			key := attrKey(vi)
+			index[key] = vi
+		}
+	}
+	if !parent.IsNil() {
+		for i := 0; i < parent.Len(); i++ {
+			vi := parent.Index(i)
+			key := attrKey(vi)
+			if w, ok := index[key]; ok {
+				index[key], err = cldr.inheritStructPtr(w, vi)
+			} else {
+				n := cldr.newNode(vi.Elem(), enc)
+				index[key], err = cldr.inheritStructPtr(n, vi)
+			}
+			index[key].Interface().(Elem).setEnclosing(enc.Addr().Interface().(Elem))
+			if err != nil {
+				return v, err
+			}
+		}
+	}
+	keys := make([]string, 0, len(index))
+	for k, _ := range index {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	sl := reflect.MakeSlice(t, len(index), len(index))
+	for i, k := range keys {
+		sl.Index(i).Set(index[k])
+	}
+	return sl, nil
+}
+
+func parentLocale(loc string) string {
+	parts := strings.Split(loc, "_")
+	if len(parts) == 1 {
+		return "root"
+	}
+	parts = parts[:len(parts)-1]
+	key := strings.Join(parts, "_")
+	return key
+}
+
+func (cldr *CLDR) resolve(loc string) (res *LDML, err error) {
+	if r := cldr.resolved[loc]; r != nil {
+		return r, nil
+	}
+	x := cldr.RawLDML(loc)
+	if x == nil {
+		return nil, fmt.Errorf("cldr: unknown locale %q", loc)
+	}
+	var v reflect.Value
+	if loc == "root" {
+		x = deepCopy(reflect.ValueOf(x)).Interface().(*LDML)
+		linkEnclosing(nil, x)
+		err = cldr.aliasResolver().visit(x)
+	} else {
+		key := parentLocale(loc)
+		var parent *LDML
+		for ; cldr.locale[key] == nil; key = parentLocale(key) {
+		}
+		if parent, err = cldr.resolve(key); err != nil {
+			return nil, err
+		}
+		v, err = cldr.inheritFields(reflect.ValueOf(x).Elem(), reflect.ValueOf(parent).Elem())
+		x = v.Interface().(*LDML)
+		linkEn
