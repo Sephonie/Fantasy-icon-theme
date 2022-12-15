@@ -356,3 +356,103 @@ func doNormDecomposed(i *Iter) []byte {
 	}
 	// new segment or too many combining characters: exit normalization
 	return i.buf[:i.rb.flushCopy(i.buf[:])]
+}
+
+func nextCGJDecompose(i *Iter) []byte {
+	i.rb.ss = 0
+	i.rb.insertCGJ()
+	i.next = nextDecomposed
+	i.rb.ss.first(i.info)
+	buf := doNormDecomposed(i)
+	return buf
+}
+
+// nextComposed is the implementation of Next for forms NFC and NFKC.
+func nextComposed(i *Iter) []byte {
+	outp, startp := 0, i.p
+	var prevCC uint8
+	for {
+		if !i.info.isYesC() {
+			goto doNorm
+		}
+		prevCC = i.info.tccc
+		sz := int(i.info.size)
+		if sz == 0 {
+			sz = 1 // illegal rune: copy byte-by-byte
+		}
+		p := outp + sz
+		if p > len(i.buf) {
+			break
+		}
+		outp = p
+		i.p += sz
+		if i.p >= i.rb.nsrc {
+			i.setDone()
+			break
+		} else if i.rb.src._byte(i.p) < utf8.RuneSelf {
+			i.rb.ss = 0
+			i.next = i.asciiF
+			break
+		}
+		i.info = i.rb.f.info(i.rb.src, i.p)
+		if v := i.rb.ss.next(i.info); v == ssStarter {
+			break
+		} else if v == ssOverflow {
+			i.next = nextCGJCompose
+			break
+		}
+		if i.info.ccc < prevCC {
+			goto doNorm
+		}
+	}
+	return i.returnSlice(startp, i.p)
+doNorm:
+	// reset to start position
+	i.p = startp
+	i.info = i.rb.f.info(i.rb.src, i.p)
+	i.rb.ss.first(i.info)
+	if i.info.multiSegment() {
+		d := i.info.Decomposition()
+		info := i.rb.f.info(input{bytes: d}, 0)
+		i.rb.insertUnsafe(input{bytes: d}, 0, info)
+		i.multiSeg = d[int(info.size):]
+		i.next = nextMultiNorm
+		return nextMultiNorm(i)
+	}
+	i.rb.ss.first(i.info)
+	i.rb.insertUnsafe(i.rb.src, i.p, i.info)
+	return doNormComposed(i)
+}
+
+func doNormComposed(i *Iter) []byte {
+	// First rune should already be inserted.
+	for {
+		if i.p += int(i.info.size); i.p >= i.rb.nsrc {
+			i.setDone()
+			break
+		}
+		i.info = i.rb.f.info(i.rb.src, i.p)
+		if s := i.rb.ss.next(i.info); s == ssStarter {
+			break
+		} else if s == ssOverflow {
+			i.next = nextCGJCompose
+			break
+		}
+		i.rb.insertUnsafe(i.rb.src, i.p, i.info)
+	}
+	i.rb.compose()
+	seg := i.buf[:i.rb.flushCopy(i.buf[:])]
+	return seg
+}
+
+func nextCGJCompose(i *Iter) []byte {
+	i.rb.ss = 0 // instead of first
+	i.rb.insertCGJ()
+	i.next = nextComposed
+	// Note that we treat any rune with nLeadingNonStarters > 0 as a non-starter,
+	// even if they are not. This is particularly dubious for U+FF9E and UFF9A.
+	// If we ever change that, insert a check here.
+	i.rb.ss.first(i.info)
+	i.rb.insertUnsafe(i.rb.src, i.p, i.info)
+	return doNormComposed(i)
+}
