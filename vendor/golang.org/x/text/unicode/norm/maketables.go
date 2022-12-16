@@ -280,4 +280,173 @@ func loadCompositionExclusions() {
 
 // hasCompatDecomp returns true if any of the recursive
 // decompositions contains a compatibility expansion.
-// In this case, the character may not occur in 
+// In this case, the character may not occur in NFK*.
+func hasCompatDecomp(r rune) bool {
+	c := &chars[r]
+	if c.compatDecomp {
+		return true
+	}
+	for _, d := range c.forms[FCompatibility].decomp {
+		if hasCompatDecomp(d) {
+			return true
+		}
+	}
+	return false
+}
+
+// Hangul related constants.
+const (
+	HangulBase = 0xAC00
+	HangulEnd  = 0xD7A4 // hangulBase + Jamo combinations (19 * 21 * 28)
+
+	JamoLBase = 0x1100
+	JamoLEnd  = 0x1113
+	JamoVBase = 0x1161
+	JamoVEnd  = 0x1176
+	JamoTBase = 0x11A8
+	JamoTEnd  = 0x11C3
+
+	JamoLVTCount = 19 * 21 * 28
+	JamoTCount   = 28
+)
+
+func isHangul(r rune) bool {
+	return HangulBase <= r && r < HangulEnd
+}
+
+func isHangulWithoutJamoT(r rune) bool {
+	if !isHangul(r) {
+		return false
+	}
+	r -= HangulBase
+	return r < JamoLVTCount && r%JamoTCount == 0
+}
+
+func ccc(r rune) uint8 {
+	return chars[r].ccc
+}
+
+// Insert a rune in a buffer, ordered by Canonical Combining Class.
+func insertOrdered(b Decomposition, r rune) Decomposition {
+	n := len(b)
+	b = append(b, 0)
+	cc := ccc(r)
+	if cc > 0 {
+		// Use bubble sort.
+		for ; n > 0; n-- {
+			if ccc(b[n-1]) <= cc {
+				break
+			}
+			b[n] = b[n-1]
+		}
+	}
+	b[n] = r
+	return b
+}
+
+// Recursively decompose.
+func decomposeRecursive(form int, r rune, d Decomposition) Decomposition {
+	dcomp := chars[r].forms[form].decomp
+	if len(dcomp) == 0 {
+		return insertOrdered(d, r)
+	}
+	for _, c := range dcomp {
+		d = decomposeRecursive(form, c, d)
+	}
+	return d
+}
+
+func completeCharFields(form int) {
+	// Phase 0: pre-expand decomposition.
+	for i := range chars {
+		f := &chars[i].forms[form]
+		if len(f.decomp) == 0 {
+			continue
+		}
+		exp := make(Decomposition, 0)
+		for _, c := range f.decomp {
+			exp = decomposeRecursive(form, c, exp)
+		}
+		f.expandedDecomp = exp
+	}
+
+	// Phase 1: composition exclusion, mark decomposition.
+	for i := range chars {
+		c := &chars[i]
+		f := &c.forms[form]
+
+		// Marks script-specific exclusions and version restricted.
+		f.isOneWay = c.excludeInComp
+
+		// Singletons
+		f.isOneWay = f.isOneWay || len(f.decomp) == 1
+
+		// Non-starter decompositions
+		if len(f.decomp) > 1 {
+			chk := c.ccc != 0 || chars[f.decomp[0]].ccc != 0
+			f.isOneWay = f.isOneWay || chk
+		}
+
+		// Runes that decompose into more than two runes.
+		f.isOneWay = f.isOneWay || len(f.decomp) > 2
+
+		if form == FCompatibility {
+			f.isOneWay = f.isOneWay || hasCompatDecomp(c.codePoint)
+		}
+
+		for _, r := range f.decomp {
+			chars[r].forms[form].inDecomp = true
+		}
+	}
+
+	// Phase 2: forward and backward combining.
+	for i := range chars {
+		c := &chars[i]
+		f := &c.forms[form]
+
+		if !f.isOneWay && len(f.decomp) == 2 {
+			f0 := &chars[f.decomp[0]].forms[form]
+			f1 := &chars[f.decomp[1]].forms[form]
+			if !f0.isOneWay {
+				f0.combinesForward = true
+			}
+			if !f1.isOneWay {
+				f1.combinesBackward = true
+			}
+		}
+		if isHangulWithoutJamoT(rune(i)) {
+			f.combinesForward = true
+		}
+	}
+
+	// Phase 3: quick check values.
+	for i := range chars {
+		c := &chars[i]
+		f := &c.forms[form]
+
+		switch {
+		case len(f.decomp) > 0:
+			f.quickCheck[MDecomposed] = QCNo
+		case isHangul(rune(i)):
+			f.quickCheck[MDecomposed] = QCNo
+		default:
+			f.quickCheck[MDecomposed] = QCYes
+		}
+		switch {
+		case f.isOneWay:
+			f.quickCheck[MComposed] = QCNo
+		case (i & 0xffff00) == JamoLBase:
+			f.quickCheck[MComposed] = QCYes
+			if JamoLBase <= i && i < JamoLEnd {
+				f.combinesForward = true
+			}
+			if JamoVBase <= i && i < JamoVEnd {
+				f.quickCheck[MComposed] = QCMaybe
+				f.combinesBackward = true
+				f.combinesForward = true
+			}
+			if JamoTBase <= i && i < JamoTEnd {
+				f.quickCheck[MComposed] = QCMaybe
+				f.combinesBackward = true
+			}
+		case !
