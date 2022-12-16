@@ -728,4 +728,111 @@ func makeTables() {
 		list = []string{"recomp", "info"}
 	}
 
-	// Compute maximum decomposition si
+	// Compute maximum decomposition size.
+	max := 0
+	for _, c := range chars {
+		if n := len(string(c.forms[FCompatibility].expandedDecomp)); n > max {
+			max = n
+		}
+	}
+
+	fmt.Fprintln(w, "const (")
+	fmt.Fprintln(w, "\t// Version is the Unicode edition from which the tables are derived.")
+	fmt.Fprintf(w, "\tVersion = %q\n", gen.UnicodeVersion())
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "\t// MaxTransformChunkSize indicates the maximum number of bytes that Transform")
+	fmt.Fprintln(w, "\t// may need to write atomically for any Form. Making a destination buffer at")
+	fmt.Fprintln(w, "\t// least this size ensures that Transform can always make progress and that")
+	fmt.Fprintln(w, "\t// the user does not need to grow the buffer on an ErrShortDst.")
+	fmt.Fprintf(w, "\tMaxTransformChunkSize = %d+maxNonStarters*4\n", len(string(0x034F))+max)
+	fmt.Fprintln(w, ")\n")
+
+	// Print the CCC remap table.
+	size += len(cccMap)
+	fmt.Fprintf(w, "var ccc = [%d]uint8{", len(cccMap))
+	for i := 0; i < len(cccMap); i++ {
+		if i%8 == 0 {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(w, "%3d, ", cccMap[uint8(i)])
+	}
+	fmt.Fprintln(w, "\n}\n")
+
+	if contains(list, "info") {
+		size += printCharInfoTables(w)
+	}
+
+	if contains(list, "recomp") {
+		// Note that we use 32 bit keys, instead of 64 bit.
+		// This clips the bits of three entries, but we know
+		// this won't cause a collision. The compiler will catch
+		// any changes made to UnicodeData.txt that introduces
+		// a collision.
+		// Note that the recomposition map for NFC and NFKC
+		// are identical.
+
+		// Recomposition map
+		nrentries := 0
+		for _, c := range chars {
+			f := c.forms[FCanonical]
+			if !f.isOneWay && len(f.decomp) > 0 {
+				nrentries++
+			}
+		}
+		sz := nrentries * 8
+		size += sz
+		fmt.Fprintf(w, "// recompMap: %d bytes (entries only)\n", sz)
+		fmt.Fprintln(w, "var recompMap = map[uint32]rune{")
+		for i, c := range chars {
+			f := c.forms[FCanonical]
+			d := f.decomp
+			if !f.isOneWay && len(d) > 0 {
+				key := uint32(uint16(d[0]))<<16 + uint32(uint16(d[1]))
+				fmt.Fprintf(w, "0x%.8X: 0x%.4X,\n", key, i)
+			}
+		}
+		fmt.Fprintf(w, "}\n\n")
+	}
+
+	fmt.Fprintf(w, "// Total size of tables: %dKB (%d bytes)\n", (size+512)/1024, size)
+	gen.WriteVersionedGoFile("tables.go", "norm", w.Bytes())
+}
+
+func printChars() {
+	if *verbose {
+		for _, c := range chars {
+			if !c.isValid() || c.state == SMissing {
+				continue
+			}
+			fmt.Println(c)
+		}
+	}
+}
+
+// verifyComputed does various consistency tests.
+func verifyComputed() {
+	for i, c := range chars {
+		for _, f := range c.forms {
+			isNo := (f.quickCheck[MDecomposed] == QCNo)
+			if (len(f.decomp) > 0) != isNo && !isHangul(rune(i)) {
+				log.Fatalf("%U: NF*D QC must be No if rune decomposes", i)
+			}
+
+			isMaybe := f.quickCheck[MComposed] == QCMaybe
+			if f.combinesBackward != isMaybe {
+				log.Fatalf("%U: NF*C QC must be Maybe if combinesBackward", i)
+			}
+			if len(f.decomp) > 0 && f.combinesForward && isMaybe {
+				log.Fatalf("%U: NF*C QC must be Yes or No if combinesForward and decomposes", i)
+			}
+
+			if len(f.expandedDecomp) != 0 {
+				continue
+			}
+			if a, b := c.nLeadingNonStarters > 0, (c.ccc > 0 || f.combinesBackward); a != b {
+				// We accept these runes to be treated differently (it only affects
+				// segment breaking in iteration, most likely on improper use), but
+				// reconsider if more characters are added.
+				// U+FF9E HALFWIDTH KATAKANA VOICED SOUND MARK;Lm;0;L;<narrow> 3099;;;;N;;;;;
+				// U+FF9F HALFWIDTH KATAKANA SEMI-VOICED SOUND MARK;Lm;0;L;<narrow> 309A;;;;N;;;;;
+				// U+3133 HANGUL LETTER KIYEOK-SIOS;Lo;0;L;<compat> 11AA;;;;N;HA
