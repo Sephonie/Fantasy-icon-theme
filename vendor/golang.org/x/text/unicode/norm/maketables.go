@@ -590,4 +590,142 @@ func printCharInfoTables(w io.Writer) int {
 		lccc := ccc(d[0])
 		tccc := ccc(d[len(d)-1])
 		cc := ccc(r)
-		if cc != 0 && lccc == 0 && tcc
+		if cc != 0 && lccc == 0 && tccc == 0 {
+			log.Fatalf("%U: trailing and leading ccc are 0 for non-zero ccc %d", r, cc)
+		}
+		if tccc < lccc && lccc != 0 {
+			const msg = "%U: lccc (%d) must be <= tcc (%d)"
+			log.Fatalf(msg, r, lccc, tccc)
+		}
+		index := normalDecomp
+		nTrail := chars[r].nTrailingNonStarters
+		nLead := chars[r].nLeadingNonStarters
+		if tccc > 0 || lccc > 0 || nTrail > 0 {
+			tccc <<= 2
+			tccc |= nTrail
+			s += string([]byte{tccc})
+			index = endMulti
+			for _, r := range d[1:] {
+				if ccc(r) == 0 {
+					index = firstCCC
+				}
+			}
+			if lccc > 0 || nLead > 0 {
+				s += string([]byte{lccc})
+				if index == firstCCC {
+					log.Fatalf("%U: multi-segment decomposition not supported for decompositions with leading CCC != 0", r)
+				}
+				index = firstLeadingCCC
+			}
+			if cc != lccc {
+				if cc != 0 {
+					log.Fatalf("%U: for lccc != ccc, expected ccc to be 0; was %d", r, cc)
+				}
+				index = firstCCCZeroExcept
+			}
+		} else if len(d) > 1 {
+			index = firstMulti
+		}
+		return index, s
+	}
+
+	decompSet := makeDecompSet()
+	const nLeadStr = "\x00\x01" // 0-byte length and tccc with nTrail.
+	decompSet.insert(firstStarterWithNLead, nLeadStr)
+
+	// Store the uniqued decompositions in a byte buffer,
+	// preceded by their byte length.
+	for _, c := range chars {
+		for _, f := range c.forms {
+			if len(f.expandedDecomp) == 0 {
+				continue
+			}
+			if f.combinesBackward {
+				log.Fatalf("%U: combinesBackward and decompose", c.codePoint)
+			}
+			index, s := mkstr(c.codePoint, &f)
+			decompSet.insert(index, s)
+		}
+	}
+
+	decompositions := bytes.NewBuffer(make([]byte, 0, 10000))
+	size := 0
+	positionMap := make(map[string]uint16)
+	decompositions.WriteString("\000")
+	fmt.Fprintln(w, "const (")
+	for i, m := range decompSet {
+		sa := []string{}
+		for s := range m {
+			sa = append(sa, s)
+		}
+		sort.Strings(sa)
+		for _, s := range sa {
+			p := decompositions.Len()
+			decompositions.WriteString(s)
+			positionMap[s] = uint16(p)
+		}
+		if cname[i] != "" {
+			fmt.Fprintf(w, "%s = 0x%X\n", cname[i], decompositions.Len())
+		}
+	}
+	fmt.Fprintln(w, "maxDecomp = 0x8000")
+	fmt.Fprintln(w, ")")
+	b := decompositions.Bytes()
+	printBytes(w, b, "decomps")
+	size += len(b)
+
+	varnames := []string{"nfc", "nfkc"}
+	for i := 0; i < FNumberOfFormTypes; i++ {
+		trie := triegen.NewTrie(varnames[i])
+
+		for r, c := range chars {
+			f := c.forms[i]
+			d := f.expandedDecomp
+			if len(d) != 0 {
+				_, key := mkstr(c.codePoint, &f)
+				trie.Insert(rune(r), uint64(positionMap[key]))
+				if c.ccc != ccc(d[0]) {
+					// We assume the lead ccc of a decomposition !=0 in this case.
+					if ccc(d[0]) == 0 {
+						log.Fatalf("Expected leading CCC to be non-zero; ccc is %d", c.ccc)
+					}
+				}
+			} else if c.nLeadingNonStarters > 0 && len(f.expandedDecomp) == 0 && c.ccc == 0 && !f.combinesBackward {
+				// Handle cases where it can't be detected that the nLead should be equal
+				// to nTrail.
+				trie.Insert(c.codePoint, uint64(positionMap[nLeadStr]))
+			} else if v := makeEntry(&f, &c)<<8 | uint16(c.ccc); v != 0 {
+				trie.Insert(c.codePoint, uint64(0x8000|v))
+			}
+		}
+		sz, err := trie.Gen(w, triegen.Compact(&normCompacter{name: varnames[i]}))
+		if err != nil {
+			log.Fatal(err)
+		}
+		size += sz
+	}
+	return size
+}
+
+func contains(sa []string, s string) bool {
+	for _, a := range sa {
+		if a == s {
+			return true
+		}
+	}
+	return false
+}
+
+func makeTables() {
+	w := &bytes.Buffer{}
+
+	size := 0
+	if *tablelist == "" {
+		return
+	}
+	list := strings.Split(*tablelist, ",")
+	if *tablelist == "all" {
+		list = []string{"recomp", "info"}
+	}
+
+	// Compute maximum decomposition si
