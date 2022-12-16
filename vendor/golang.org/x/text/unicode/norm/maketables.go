@@ -449,4 +449,145 @@ func completeCharFields(form int) {
 				f.quickCheck[MComposed] = QCMaybe
 				f.combinesBackward = true
 			}
-		case !
+		case !f.combinesBackward:
+			f.quickCheck[MComposed] = QCYes
+		default:
+			f.quickCheck[MComposed] = QCMaybe
+		}
+	}
+}
+
+func computeNonStarterCounts() {
+	// Phase 4: leading and trailing non-starter count
+	for i := range chars {
+		c := &chars[i]
+
+		runes := []rune{rune(i)}
+		// We always use FCompatibility so that the CGJ insertion points do not
+		// change for repeated normalizations with different forms.
+		if exp := c.forms[FCompatibility].expandedDecomp; len(exp) > 0 {
+			runes = exp
+		}
+		// We consider runes that combine backwards to be non-starters for the
+		// purpose of Stream-Safe Text Processing.
+		for _, r := range runes {
+			if cr := &chars[r]; cr.ccc == 0 && !cr.forms[FCompatibility].combinesBackward {
+				break
+			}
+			c.nLeadingNonStarters++
+		}
+		for i := len(runes) - 1; i >= 0; i-- {
+			if cr := &chars[runes[i]]; cr.ccc == 0 && !cr.forms[FCompatibility].combinesBackward {
+				break
+			}
+			c.nTrailingNonStarters++
+		}
+		if c.nTrailingNonStarters > 3 {
+			log.Fatalf("%U: Decomposition with more than 3 (%d) trailing modifiers (%U)", i, c.nTrailingNonStarters, runes)
+		}
+
+		if isHangul(rune(i)) {
+			c.nTrailingNonStarters = 2
+			if isHangulWithoutJamoT(rune(i)) {
+				c.nTrailingNonStarters = 1
+			}
+		}
+
+		if l, t := c.nLeadingNonStarters, c.nTrailingNonStarters; l > 0 && l != t {
+			log.Fatalf("%U: number of leading and trailing non-starters should be equal (%d vs %d)", i, l, t)
+		}
+		if t := c.nTrailingNonStarters; t > 3 {
+			log.Fatalf("%U: number of trailing non-starters is %d > 3", t)
+		}
+	}
+}
+
+func printBytes(w io.Writer, b []byte, name string) {
+	fmt.Fprintf(w, "// %s: %d bytes\n", name, len(b))
+	fmt.Fprintf(w, "var %s = [...]byte {", name)
+	for i, c := range b {
+		switch {
+		case i%64 == 0:
+			fmt.Fprintf(w, "\n// Bytes %x - %x\n", i, i+63)
+		case i%8 == 0:
+			fmt.Fprintf(w, "\n")
+		}
+		fmt.Fprintf(w, "0x%.2X, ", c)
+	}
+	fmt.Fprint(w, "\n}\n\n")
+}
+
+// See forminfo.go for format.
+func makeEntry(f *FormInfo, c *Char) uint16 {
+	e := uint16(0)
+	if r := c.codePoint; HangulBase <= r && r < HangulEnd {
+		e |= 0x40
+	}
+	if f.combinesForward {
+		e |= 0x20
+	}
+	if f.quickCheck[MDecomposed] == QCNo {
+		e |= 0x4
+	}
+	switch f.quickCheck[MComposed] {
+	case QCYes:
+	case QCNo:
+		e |= 0x10
+	case QCMaybe:
+		e |= 0x18
+	default:
+		log.Fatalf("Illegal quickcheck value %v.", f.quickCheck[MComposed])
+	}
+	e |= uint16(c.nTrailingNonStarters)
+	return e
+}
+
+// decompSet keeps track of unique decompositions, grouped by whether
+// the decomposition is followed by a trailing and/or leading CCC.
+type decompSet [7]map[string]bool
+
+const (
+	normalDecomp = iota
+	firstMulti
+	firstCCC
+	endMulti
+	firstLeadingCCC
+	firstCCCZeroExcept
+	firstStarterWithNLead
+	lastDecomp
+)
+
+var cname = []string{"firstMulti", "firstCCC", "endMulti", "firstLeadingCCC", "firstCCCZeroExcept", "firstStarterWithNLead", "lastDecomp"}
+
+func makeDecompSet() decompSet {
+	m := decompSet{}
+	for i := range m {
+		m[i] = make(map[string]bool)
+	}
+	return m
+}
+func (m *decompSet) insert(key int, s string) {
+	m[key][s] = true
+}
+
+func printCharInfoTables(w io.Writer) int {
+	mkstr := func(r rune, f *FormInfo) (int, string) {
+		d := f.expandedDecomp
+		s := string([]rune(d))
+		if max := 1 << 6; len(s) >= max {
+			const msg = "%U: too many bytes in decomposition: %d >= %d"
+			log.Fatalf(msg, r, len(s), max)
+		}
+		head := uint8(len(s))
+		if f.quickCheck[MComposed] != QCYes {
+			head |= 0x40
+		}
+		if f.combinesForward {
+			head |= 0x80
+		}
+		s = string([]byte{head}) + s
+
+		lccc := ccc(d[0])
+		tccc := ccc(d[len(d)-1])
+		cc := ccc(r)
+		if cc != 0 && lccc == 0 && tcc
