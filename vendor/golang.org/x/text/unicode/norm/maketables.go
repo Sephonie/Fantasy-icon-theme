@@ -835,4 +835,140 @@ func verifyComputed() {
 				// reconsider if more characters are added.
 				// U+FF9E HALFWIDTH KATAKANA VOICED SOUND MARK;Lm;0;L;<narrow> 3099;;;;N;;;;;
 				// U+FF9F HALFWIDTH KATAKANA SEMI-VOICED SOUND MARK;Lm;0;L;<narrow> 309A;;;;N;;;;;
-				// U+3133 HANGUL LETTER KIYEOK-SIOS;Lo;0;L;<compat> 11AA;;;;N;HA
+				// U+3133 HANGUL LETTER KIYEOK-SIOS;Lo;0;L;<compat> 11AA;;;;N;HANGUL LETTER GIYEOG SIOS;;;;
+				// U+318E HANGUL LETTER ARAEAE;Lo;0;L;<compat> 11A1;;;;N;HANGUL LETTER ALAE AE;;;;
+				// U+FFA3 HALFWIDTH HANGUL LETTER KIYEOK-SIOS;Lo;0;L;<narrow> 3133;;;;N;HALFWIDTH HANGUL LETTER GIYEOG SIOS;;;;
+				// U+FFDC HALFWIDTH HANGUL LETTER I;Lo;0;L;<narrow> 3163;;;;N;;;;;
+				if i != 0xFF9E && i != 0xFF9F && !(0x3133 <= i && i <= 0x318E) && !(0xFFA3 <= i && i <= 0xFFDC) {
+					log.Fatalf("%U: nLead was %v; want %v", i, a, b)
+				}
+			}
+		}
+		nfc := c.forms[FCanonical]
+		nfkc := c.forms[FCompatibility]
+		if nfc.combinesBackward != nfkc.combinesBackward {
+			log.Fatalf("%U: Cannot combine combinesBackward\n", c.codePoint)
+		}
+	}
+}
+
+// Use values in DerivedNormalizationProps.txt to compare against the
+// values we computed.
+// DerivedNormalizationProps.txt has form:
+// 00C0..00C5    ; NFD_QC; N # ...
+// 0374          ; NFD_QC; N # ...
+// See http://unicode.org/reports/tr44/ for full explanation
+func testDerived() {
+	f := gen.OpenUCDFile("DerivedNormalizationProps.txt")
+	defer f.Close()
+	p := ucd.New(f)
+	for p.Next() {
+		r := p.Rune(0)
+		c := &chars[r]
+
+		var ftype, mode int
+		qt := p.String(1)
+		switch qt {
+		case "NFC_QC":
+			ftype, mode = FCanonical, MComposed
+		case "NFD_QC":
+			ftype, mode = FCanonical, MDecomposed
+		case "NFKC_QC":
+			ftype, mode = FCompatibility, MComposed
+		case "NFKD_QC":
+			ftype, mode = FCompatibility, MDecomposed
+		default:
+			continue
+		}
+		var qr QCResult
+		switch p.String(2) {
+		case "Y":
+			qr = QCYes
+		case "N":
+			qr = QCNo
+		case "M":
+			qr = QCMaybe
+		default:
+			log.Fatalf(`Unexpected quick check value "%s"`, p.String(2))
+		}
+		if got := c.forms[ftype].quickCheck[mode]; got != qr {
+			log.Printf("%U: FAILED %s (was %v need %v)\n", r, qt, got, qr)
+		}
+		c.forms[ftype].verified[mode] = true
+	}
+	if err := p.Err(); err != nil {
+		log.Fatal(err)
+	}
+	// Any unspecified value must be QCYes. Verify this.
+	for i, c := range chars {
+		for j, fd := range c.forms {
+			for k, qr := range fd.quickCheck {
+				if !fd.verified[k] && qr != QCYes {
+					m := "%U: FAIL F:%d M:%d (was %v need Yes) %s\n"
+					log.Printf(m, i, j, k, qr, c.name)
+				}
+			}
+		}
+	}
+}
+
+var testHeader = `const (
+	Yes = iota
+	No
+	Maybe
+)
+
+type formData struct {
+	qc              uint8
+	combinesForward bool
+	decomposition   string
+}
+
+type runeData struct {
+	r      rune
+	ccc    uint8
+	nLead  uint8
+	nTrail uint8
+	f      [2]formData // 0: canonical; 1: compatibility
+}
+
+func f(qc uint8, cf bool, dec string) [2]formData {
+	return [2]formData{{qc, cf, dec}, {qc, cf, dec}}
+}
+
+func g(qc, qck uint8, cf, cfk bool, d, dk string) [2]formData {
+	return [2]formData{{qc, cf, d}, {qck, cfk, dk}}
+}
+
+var testData = []runeData{
+`
+
+func printTestdata() {
+	type lastInfo struct {
+		ccc    uint8
+		nLead  uint8
+		nTrail uint8
+		f      string
+	}
+
+	last := lastInfo{}
+	w := &bytes.Buffer{}
+	fmt.Fprintf(w, testHeader)
+	for r, c := range chars {
+		f := c.forms[FCanonical]
+		qc, cf, d := f.quickCheck[MComposed], f.combinesForward, string(f.expandedDecomp)
+		f = c.forms[FCompatibility]
+		qck, cfk, dk := f.quickCheck[MComposed], f.combinesForward, string(f.expandedDecomp)
+		s := ""
+		if d == dk && qc == qck && cf == cfk {
+			s = fmt.Sprintf("f(%s, %v, %q)", qc, cf, d)
+		} else {
+			s = fmt.Sprintf("g(%s, %s, %v, %v, %q, %q)", qc, qck, cf, cfk, d, dk)
+		}
+		current := lastInfo{c.ccc, c.nLeadingNonStarters, c.nTrailingNonStarters, s}
+		if last != current {
+			fmt.Fprintf(w, "\t{0x%x, %d, %d, %d, %s},\n", r, c.origCCC, c.nLeadingNonStarters, c.nTrailingNonStarters, s)
+			last = current
+		}
+	}
+	fmt.
