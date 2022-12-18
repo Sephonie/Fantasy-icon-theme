@@ -971,4 +971,6 @@ func printTestdata() {
 			last = current
 		}
 	}
-	fmt.
+	fmt.Fprintln(w, "}")
+	gen.WriteVersionedGoFile("data_test.go", "norm", w.Bytes())
+}
