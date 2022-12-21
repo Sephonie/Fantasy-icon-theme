@@ -50,4 +50,39 @@ func flushTransform(rb *reorderBuffer) bool {
 
 var errs = []error{nil, transform.ErrShortDst, transform.ErrShortSrc}
 
-// transform implements the transform.Transfor
+// transform implements the transform.Transformer interface. It is only called
+// when quickSpan does not pass for a given string.
+func (f Form) transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error) {
+	// TODO: get rid of reorderBuffer. See CL 23460044.
+	rb := reorderBuffer{}
+	rb.init(f, src)
+	for {
+		// Load segment into reorder buffer.
+		rb.setFlusher(dst[nDst:], flushTransform)
+		end := decomposeSegment(&rb, nSrc, atEOF)
+		if end < 0 {
+			return nDst, nSrc, errs[-end]
+		}
+		nDst = len(dst) - len(rb.out)
+		nSrc = end
+
+		// Next quickSpan.
+		end = rb.nsrc
+		eof := atEOF
+		if n := nSrc + len(dst) - nDst; n < end {
+			err = transform.ErrShortDst
+			end = n
+			eof = false
+		}
+		end, ok := rb.f.quickSpan(rb.src, nSrc, end, eof)
+		n := copy(dst[nDst:], rb.src.bytes[nSrc:end])
+		nSrc += n
+		nDst += n
+		if ok {
+			if n < rb.nsrc && !atEOF {
+				err = transform.ErrShortSrc
+			}
+			return nDst, nSrc, err
+		}
+	}
+}
