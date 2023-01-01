@@ -399,4 +399,14 @@ func yaml_parser_update_buffer(parser *yaml_parser_t, length int) bool {
 		}
 	}
 	// [Go] Read the documentation of this function above. To return true,
-	// we need to have the gi
+	// we need to have the given length in the buffer. Not doing that means
+	// every single check that calls this function to make sure the buffer
+	// has a given length is Go) panicking; or C) accessing invalid memory.
+	// This happens here due to the EOF above breaking early.
+	for buffer_len < length {
+		parser.buffer[buffer_len] = 0
+		buffer_len++
+	}
+	parser.buffer = parser.buffer[:buffer_len]
+	return true
+}
