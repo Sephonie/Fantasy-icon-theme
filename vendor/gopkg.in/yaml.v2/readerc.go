@@ -73,4 +73,102 @@ func yaml_parser_update_raw_buffer(parser *yaml_parser_t) bool {
 	parser.raw_buffer = parser.raw_buffer[:len(parser.raw_buffer)-parser.raw_buffer_pos]
 	parser.raw_buffer_pos = 0
 
+	// Call the read handler to fill the buffer.
+	size_read, err := parser.read_handler(parser, parser.raw_buffer[len(parser.raw_buffer):cap(parser.raw_buffer)])
+	parser.raw_buffer = parser.raw_buffer[:len(parser.raw_buffer)+size_read]
+	if err == io.EOF {
+		parser.eof = true
+	} else if err != nil {
+		return yaml_parser_set_reader_error(parser, "input error: "+err.Error(), parser.offset, -1)
+	}
+	return true
+}
+
+// Ensure that the buffer contains at least `length` characters.
+// Return true on success, false on failure.
+//
+// The length is supposed to be significantly less that the buffer size.
+func yaml_parser_update_buffer(parser *yaml_parser_t, length int) bool {
+	if parser.read_handler == nil {
+		panic("read handler must be set")
+	}
+
+	// [Go] This function was changed to guarantee the requested length size at EOF.
+	// The fact we need to do this is pretty awful, but the description above implies
+	// for that to be the case, and there are tests 
+
+	// If the EOF flag is set and the raw buffer is empty, do nothing.
+	if parser.eof && parser.raw_buffer_pos == len(parser.raw_buffer) {
+		// [Go] ACTUALLY! Read the documentation of this function above.
+		// This is just broken. To return true, we need to have the
+		// given length in the buffer. Not doing that means every single
+		// check that calls this function to make sure the buffer has a
+		// given length is Go) panicking; or C) accessing invalid memory.
+		//return true
+	}
+
+	// Return if the buffer contains enough characters.
+	if parser.unread >= length {
+		return true
+	}
+
+	// Determine the input encoding if it is not known yet.
+	if parser.encoding == yaml_ANY_ENCODING {
+		if !yaml_parser_determine_encoding(parser) {
+			return false
+		}
+	}
+
+	// Move the unread characters to the beginning of the buffer.
+	buffer_len := len(parser.buffer)
+	if parser.buffer_pos > 0 && parser.buffer_pos < buffer_len {
+		copy(parser.buffer, parser.buffer[parser.buffer_pos:])
+		buffer_len -= parser.buffer_pos
+		parser.buffer_pos = 0
+	} else if parser.buffer_pos == buffer_len {
+		buffer_len = 0
+		parser.buffer_pos = 0
+	}
+
+	// Open the whole buffer for writing, and cut it before returning.
+	parser.buffer = parser.buffer[:cap(parser.buffer)]
+
+	// Fill the buffer until it has enough characters.
+	first := true
+	for parser.unread < length {
+
+		// Fill the raw buffer if necessary.
+		if !first || parser.raw_buffer_pos == len(parser.raw_buffer) {
+			if !yaml_parser_update_raw_buffer(parser) {
+				parser.buffer = parser.buffer[:buffer_len]
+				return false
+			}
+		}
+		first = false
+
+		// Decode the raw buffer.
+	inner:
+		for parser.raw_buffer_pos != len(parser.raw_buffer) {
+			var value rune
+			var width int
+
+			raw_unread := len(parser.raw_buffer) - parser.raw_buffer_pos
+
+			// Decode the next character.
+			switch parser.encoding {
+			case yaml_UTF8_ENCODING:
+				// Decode a UTF-8 character.  Check RFC 3629
+				// (http://www.ietf.org/rfc/rfc3629.txt) for more details.
+				//
+				// The following table (taken from the RFC) is used for
+				// decoding.
+				//
+				//    Char. number range |        UTF-8 octet sequence
+				//      (hexadecimal)    |              (binary)
+				//   --------------------+------------------------------------
+				//   0000 0000-0000 007F | 0xxxxxxx
+				//   0000 0080-0000 07FF | 110xxxxx 10xxxxxx
+				//   0000 0800-0000 FFFF | 1110xxxx 10xxxxxx 10xxxxxx
+				//   0001 0000-0010 FFFF | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+				//
 	
