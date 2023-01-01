@@ -285,4 +285,118 @@ func yaml_parser_update_buffer(parser *yaml_parser_t, length int) bool {
 
 				// Check for incomplete UTF-16 character.
 				if raw_unread < 2 {
-					if p
+					if parser.eof {
+						return yaml_parser_set_reader_error(parser,
+							"incomplete UTF-16 character",
+							parser.offset, -1)
+					}
+					break inner
+				}
+
+				// Get the character.
+				value = rune(parser.raw_buffer[parser.raw_buffer_pos+low]) +
+					(rune(parser.raw_buffer[parser.raw_buffer_pos+high]) << 8)
+
+				// Check for unexpected low surrogate area.
+				if value&0xFC00 == 0xDC00 {
+					return yaml_parser_set_reader_error(parser,
+						"unexpected low surrogate area",
+						parser.offset, int(value))
+				}
+
+				// Check for a high surrogate area.
+				if value&0xFC00 == 0xD800 {
+					width = 4
+
+					// Check for incomplete surrogate pair.
+					if raw_unread < 4 {
+						if parser.eof {
+							return yaml_parser_set_reader_error(parser,
+								"incomplete UTF-16 surrogate pair",
+								parser.offset, -1)
+						}
+						break inner
+					}
+
+					// Get the next character.
+					value2 := rune(parser.raw_buffer[parser.raw_buffer_pos+low+2]) +
+						(rune(parser.raw_buffer[parser.raw_buffer_pos+high+2]) << 8)
+
+					// Check for a low surrogate area.
+					if value2&0xFC00 != 0xDC00 {
+						return yaml_parser_set_reader_error(parser,
+							"expected low surrogate area",
+							parser.offset+2, int(value2))
+					}
+
+					// Generate the value of the surrogate pair.
+					value = 0x10000 + ((value & 0x3FF) << 10) + (value2 & 0x3FF)
+				} else {
+					width = 2
+				}
+
+			default:
+				panic("impossible")
+			}
+
+			// Check if the character is in the allowed range:
+			//      #x9 | #xA | #xD | [#x20-#x7E]               (8 bit)
+			//      | #x85 | [#xA0-#xD7FF] | [#xE000-#xFFFD]    (16 bit)
+			//      | [#x10000-#x10FFFF]                        (32 bit)
+			switch {
+			case value == 0x09:
+			case value == 0x0A:
+			case value == 0x0D:
+			case value >= 0x20 && value <= 0x7E:
+			case value == 0x85:
+			case value >= 0xA0 && value <= 0xD7FF:
+			case value >= 0xE000 && value <= 0xFFFD:
+			case value >= 0x10000 && value <= 0x10FFFF:
+			default:
+				return yaml_parser_set_reader_error(parser,
+					"control characters are not allowed",
+					parser.offset, int(value))
+			}
+
+			// Move the raw pointers.
+			parser.raw_buffer_pos += width
+			parser.offset += width
+
+			// Finally put the character into the buffer.
+			if value <= 0x7F {
+				// 0000 0000-0000 007F . 0xxxxxxx
+				parser.buffer[buffer_len+0] = byte(value)
+				buffer_len += 1
+			} else if value <= 0x7FF {
+				// 0000 0080-0000 07FF . 110xxxxx 10xxxxxx
+				parser.buffer[buffer_len+0] = byte(0xC0 + (value >> 6))
+				parser.buffer[buffer_len+1] = byte(0x80 + (value & 0x3F))
+				buffer_len += 2
+			} else if value <= 0xFFFF {
+				// 0000 0800-0000 FFFF . 1110xxxx 10xxxxxx 10xxxxxx
+				parser.buffer[buffer_len+0] = byte(0xE0 + (value >> 12))
+				parser.buffer[buffer_len+1] = byte(0x80 + ((value >> 6) & 0x3F))
+				parser.buffer[buffer_len+2] = byte(0x80 + (value & 0x3F))
+				buffer_len += 3
+			} else {
+				// 0001 0000-0010 FFFF . 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+				parser.buffer[buffer_len+0] = byte(0xF0 + (value >> 18))
+				parser.buffer[buffer_len+1] = byte(0x80 + ((value >> 12) & 0x3F))
+				parser.buffer[buffer_len+2] = byte(0x80 + ((value >> 6) & 0x3F))
+				parser.buffer[buffer_len+3] = byte(0x80 + (value & 0x3F))
+				buffer_len += 4
+			}
+
+			parser.unread++
+		}
+
+		// On EOF, put NUL into the buffer and return.
+		if parser.eof {
+			parser.buffer[buffer_len] = 0
+			buffer_len++
+			parser.unread++
+			break
+		}
+	}
+	// [Go] Read the documentation of this function above. To return true,
+	// we need to have the gi
