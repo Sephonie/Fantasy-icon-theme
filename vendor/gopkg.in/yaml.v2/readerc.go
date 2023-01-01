@@ -171,4 +171,118 @@ func yaml_parser_update_buffer(parser *yaml_parser_t, length int) bool {
 				//   0000 0800-0000 FFFF | 1110xxxx 10xxxxxx 10xxxxxx
 				//   0001 0000-0010 FFFF | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 				//
-	
+				// Additionally, the characters in the range 0xD800-0xDFFF
+				// are prohibited as they are reserved for use with UTF-16
+				// surrogate pairs.
+
+				// Determine the length of the UTF-8 sequence.
+				octet := parser.raw_buffer[parser.raw_buffer_pos]
+				switch {
+				case octet&0x80 == 0x00:
+					width = 1
+				case octet&0xE0 == 0xC0:
+					width = 2
+				case octet&0xF0 == 0xE0:
+					width = 3
+				case octet&0xF8 == 0xF0:
+					width = 4
+				default:
+					// The leading octet is invalid.
+					return yaml_parser_set_reader_error(parser,
+						"invalid leading UTF-8 octet",
+						parser.offset, int(octet))
+				}
+
+				// Check if the raw buffer contains an incomplete character.
+				if width > raw_unread {
+					if parser.eof {
+						return yaml_parser_set_reader_error(parser,
+							"incomplete UTF-8 octet sequence",
+							parser.offset, -1)
+					}
+					break inner
+				}
+
+				// Decode the leading octet.
+				switch {
+				case octet&0x80 == 0x00:
+					value = rune(octet & 0x7F)
+				case octet&0xE0 == 0xC0:
+					value = rune(octet & 0x1F)
+				case octet&0xF0 == 0xE0:
+					value = rune(octet & 0x0F)
+				case octet&0xF8 == 0xF0:
+					value = rune(octet & 0x07)
+				default:
+					value = 0
+				}
+
+				// Check and decode the trailing octets.
+				for k := 1; k < width; k++ {
+					octet = parser.raw_buffer[parser.raw_buffer_pos+k]
+
+					// Check if the octet is valid.
+					if (octet & 0xC0) != 0x80 {
+						return yaml_parser_set_reader_error(parser,
+							"invalid trailing UTF-8 octet",
+							parser.offset+k, int(octet))
+					}
+
+					// Decode the octet.
+					value = (value << 6) + rune(octet&0x3F)
+				}
+
+				// Check the length of the sequence against the value.
+				switch {
+				case width == 1:
+				case width == 2 && value >= 0x80:
+				case width == 3 && value >= 0x800:
+				case width == 4 && value >= 0x10000:
+				default:
+					return yaml_parser_set_reader_error(parser,
+						"invalid length of a UTF-8 sequence",
+						parser.offset, -1)
+				}
+
+				// Check the range of the value.
+				if value >= 0xD800 && value <= 0xDFFF || value > 0x10FFFF {
+					return yaml_parser_set_reader_error(parser,
+						"invalid Unicode character",
+						parser.offset, int(value))
+				}
+
+			case yaml_UTF16LE_ENCODING, yaml_UTF16BE_ENCODING:
+				var low, high int
+				if parser.encoding == yaml_UTF16LE_ENCODING {
+					low, high = 0, 1
+				} else {
+					low, high = 1, 0
+				}
+
+				// The UTF-16 encoding is not as simple as one might
+				// naively think.  Check RFC 2781
+				// (http://www.ietf.org/rfc/rfc2781.txt).
+				//
+				// Normally, two subsequent bytes describe a Unicode
+				// character.  However a special technique (called a
+				// surrogate pair) is used for specifying character
+				// values larger than 0xFFFF.
+				//
+				// A surrogate pair consists of two pseudo-characters:
+				//      high surrogate area (0xD800-0xDBFF)
+				//      low surrogate area (0xDC00-0xDFFF)
+				//
+				// The following formulas are used for decoding
+				// and encoding characters using surrogate pairs:
+				//
+				//  U  = U' + 0x10000   (0x01 00 00 <= U <= 0x10 FF FF)
+				//  U' = yyyyyyyyyyxxxxxxxxxx   (0 <= U' <= 0x0F FF FF)
+				//  W1 = 110110yyyyyyyyyy
+				//  W2 = 110111xxxxxxxxxx
+				//
+				// where U is the character value, W1 is the high surrogate
+				// area, W2 is the low surrogate area.
+
+				// Check for incomplete UTF-16 character.
+				if raw_unread < 2 {
+					if p
