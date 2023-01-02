@@ -106,4 +106,112 @@ func NewDecoder(r io.Reader) *Decoder {
 }
 
 // SetStrict sets whether strict decoding behaviour is enabled when
-// decoding items in the dat
+// decoding items in the data (see UnmarshalStrict). By default, decoding is not strict.
+func (dec *Decoder) SetStrict(strict bool) {
+	dec.strict = strict
+}
+
+// Decode reads the next YAML-encoded value from its input
+// and stores it in the value pointed to by v.
+//
+// See the documentation for Unmarshal for details about the
+// conversion of YAML into a Go value.
+func (dec *Decoder) Decode(v interface{}) (err error) {
+	d := newDecoder(dec.strict)
+	defer handleErr(&err)
+	node := dec.parser.parse()
+	if node == nil {
+		return io.EOF
+	}
+	out := reflect.ValueOf(v)
+	if out.Kind() == reflect.Ptr && !out.IsNil() {
+		out = out.Elem()
+	}
+	d.unmarshal(node, out)
+	if len(d.terrors) > 0 {
+		return &TypeError{d.terrors}
+	}
+	return nil
+}
+
+func unmarshal(in []byte, out interface{}, strict bool) (err error) {
+	defer handleErr(&err)
+	d := newDecoder(strict)
+	p := newParser(in)
+	defer p.destroy()
+	node := p.parse()
+	if node != nil {
+		v := reflect.ValueOf(out)
+		if v.Kind() == reflect.Ptr && !v.IsNil() {
+			v = v.Elem()
+		}
+		d.unmarshal(node, v)
+	}
+	if len(d.terrors) > 0 {
+		return &TypeError{d.terrors}
+	}
+	return nil
+}
+
+// Marshal serializes the value provided into a YAML document. The structure
+// of the generated document will reflect the structure of the value itself.
+// Maps and pointers (to struct, string, int, etc) are accepted as the in value.
+//
+// Struct fields are only marshalled if they are exported (have an upper case
+// first letter), and are marshalled using the field name lowercased as the
+// default key. Custom keys may be defined via the "yaml" name in the field
+// tag: the content preceding the first comma is used as the key, and the
+// following comma-separated options are used to tweak the marshalling process.
+// Conflicting names result in a runtime error.
+//
+// The field tag format accepted is:
+//
+//     `(...) yaml:"[<key>][,<flag1>[,<flag2>]]" (...)`
+//
+// The following flags are currently supported:
+//
+//     omitempty    Only include the field if it's not set to the zero
+//                  value for the type or to empty slices or maps.
+//                  Zero valued structs will be omitted if all their public
+//                  fields are zero, unless they implement an IsZero
+//                  method (see the IsZeroer interface type), in which
+//                  case the field will be included if that method returns true.
+//
+//     flow         Marshal using a flow style (useful for structs,
+//                  sequences and maps).
+//
+//     inline       Inline the field, which must be a struct or a map,
+//                  causing all of its fields or keys to be processed as if
+//                  they were part of the outer struct. For maps, keys must
+//                  not conflict with the yaml keys of other struct fields.
+//
+// In addition, if the key is "-", the field is ignored.
+//
+// For example:
+//
+//     type T struct {
+//         F int `yaml:"a,omitempty"`
+//         B int
+//     }
+//     yaml.Marshal(&T{B: 2}) // Returns "b: 2\n"
+//     yaml.Marshal(&T{F: 1}} // Returns "a: 1\nb: 0\n"
+//
+func Marshal(in interface{}) (out []byte, err error) {
+	defer handleErr(&err)
+	e := newEncoder()
+	defer e.destroy()
+	e.marshalDoc("", reflect.ValueOf(in))
+	e.finish()
+	out = e.out
+	return
+}
+
+// An Encoder writes YAML values to an output stream.
+type Encoder struct {
+	encoder *encoder
+}
+
+// NewEncoder returns a new encoder that writes to w.
+// The Encoder should be closed after use to flush all data
+// to w.
+func NewEn
