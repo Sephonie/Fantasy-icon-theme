@@ -214,4 +214,147 @@ type Encoder struct {
 // NewEncoder returns a new encoder that writes to w.
 // The Encoder should be closed after use to flush all data
 // to w.
-func NewEn
+func NewEncoder(w io.Writer) *Encoder {
+	return &Encoder{
+		encoder: newEncoderWithWriter(w),
+	}
+}
+
+// Encode writes the YAML encoding of v to the stream.
+// If multiple items are encoded to the stream, the
+// second and subsequent document will be preceded
+// with a "---" document separator, but the first will not.
+//
+// See the documentation for Marshal for details about the conversion of Go
+// values to YAML.
+func (e *Encoder) Encode(v interface{}) (err error) {
+	defer handleErr(&err)
+	e.encoder.marshalDoc("", reflect.ValueOf(v))
+	return nil
+}
+
+// Close closes the encoder by writing any remaining data.
+// It does not write a stream terminating string "...".
+func (e *Encoder) Close() (err error) {
+	defer handleErr(&err)
+	e.encoder.finish()
+	return nil
+}
+
+func handleErr(err *error) {
+	if v := recover(); v != nil {
+		if e, ok := v.(yamlError); ok {
+			*err = e.err
+		} else {
+			panic(v)
+		}
+	}
+}
+
+type yamlError struct {
+	err error
+}
+
+func fail(err error) {
+	panic(yamlError{err})
+}
+
+func failf(format string, args ...interface{}) {
+	panic(yamlError{fmt.Errorf("yaml: "+format, args...)})
+}
+
+// A TypeError is returned by Unmarshal when one or more fields in
+// the YAML document cannot be properly decoded into the requested
+// types. When this error is returned, the value is still
+// unmarshaled partially.
+type TypeError struct {
+	Errors []string
+}
+
+func (e *TypeError) Error() string {
+	return fmt.Sprintf("yaml: unmarshal errors:\n  %s", strings.Join(e.Errors, "\n  "))
+}
+
+// --------------------------------------------------------------------------
+// Maintain a mapping of keys to structure field indexes
+
+// The code in this section was copied from mgo/bson.
+
+// structInfo holds details for the serialization of fields of
+// a given struct.
+type structInfo struct {
+	FieldsMap  map[string]fieldInfo
+	FieldsList []fieldInfo
+
+	// InlineMap is the number of the field in the struct that
+	// contains an ,inline map, or -1 if there's none.
+	InlineMap int
+}
+
+type fieldInfo struct {
+	Key       string
+	Num       int
+	OmitEmpty bool
+	Flow      bool
+	// Id holds the unique field identifier, so we can cheaply
+	// check for field duplicates without maintaining an extra map.
+	Id int
+
+	// Inline holds the field index if the field is part of an inlined struct.
+	Inline []int
+}
+
+var structMap = make(map[reflect.Type]*structInfo)
+var fieldMapMutex sync.RWMutex
+
+func getStructInfo(st reflect.Type) (*structInfo, error) {
+	fieldMapMutex.RLock()
+	sinfo, found := structMap[st]
+	fieldMapMutex.RUnlock()
+	if found {
+		return sinfo, nil
+	}
+
+	n := st.NumField()
+	fieldsMap := make(map[string]fieldInfo)
+	fieldsList := make([]fieldInfo, 0, n)
+	inlineMap := -1
+	for i := 0; i != n; i++ {
+		field := st.Field(i)
+		if field.PkgPath != "" && !field.Anonymous {
+			continue // Private field
+		}
+
+		info := fieldInfo{Num: i}
+
+		tag := field.Tag.Get("yaml")
+		if tag == "" && strings.Index(string(field.Tag), ":") < 0 {
+			tag = string(field.Tag)
+		}
+		if tag == "-" {
+			continue
+		}
+
+		inline := false
+		fields := strings.Split(tag, ",")
+		if len(fields) > 1 {
+			for _, flag := range fields[1:] {
+				switch flag {
+				case "omitempty":
+					info.OmitEmpty = true
+				case "flow":
+					info.Flow = true
+				case "inline":
+					inline = true
+				default:
+					return nil, errors.New(fmt.Sprintf("Unsupported flag %q in tag %q of type %s", flag, tag, st))
+				}
+			}
+			tag = fields[0]
+		}
+
+		if inline {
+			switch field.Type.Kind() {
+			case reflect.Map:
+				if inlineMap >= 0 {
+					return nil, errors.New("Multiple ,inline maps in stru
