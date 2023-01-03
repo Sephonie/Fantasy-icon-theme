@@ -357,4 +357,110 @@ func getStructInfo(st reflect.Type) (*structInfo, error) {
 			switch field.Type.Kind() {
 			case reflect.Map:
 				if inlineMap >= 0 {
-					return nil, errors.New("Multiple ,inline maps in stru
+					return nil, errors.New("Multiple ,inline maps in struct " + st.String())
+				}
+				if field.Type.Key() != reflect.TypeOf("") {
+					return nil, errors.New("Option ,inline needs a map with string keys in struct " + st.String())
+				}
+				inlineMap = info.Num
+			case reflect.Struct:
+				sinfo, err := getStructInfo(field.Type)
+				if err != nil {
+					return nil, err
+				}
+				for _, finfo := range sinfo.FieldsList {
+					if _, found := fieldsMap[finfo.Key]; found {
+						msg := "Duplicated key '" + finfo.Key + "' in struct " + st.String()
+						return nil, errors.New(msg)
+					}
+					if finfo.Inline == nil {
+						finfo.Inline = []int{i, finfo.Num}
+					} else {
+						finfo.Inline = append([]int{i}, finfo.Inline...)
+					}
+					finfo.Id = len(fieldsList)
+					fieldsMap[finfo.Key] = finfo
+					fieldsList = append(fieldsList, finfo)
+				}
+			default:
+				//return nil, errors.New("Option ,inline needs a struct value or map field")
+				return nil, errors.New("Option ,inline needs a struct value field")
+			}
+			continue
+		}
+
+		if tag != "" {
+			info.Key = tag
+		} else {
+			info.Key = strings.ToLower(field.Name)
+		}
+
+		if _, found = fieldsMap[info.Key]; found {
+			msg := "Duplicated key '" + info.Key + "' in struct " + st.String()
+			return nil, errors.New(msg)
+		}
+
+		info.Id = len(fieldsList)
+		fieldsList = append(fieldsList, info)
+		fieldsMap[info.Key] = info
+	}
+
+	sinfo = &structInfo{
+		FieldsMap:  fieldsMap,
+		FieldsList: fieldsList,
+		InlineMap:  inlineMap,
+	}
+
+	fieldMapMutex.Lock()
+	structMap[st] = sinfo
+	fieldMapMutex.Unlock()
+	return sinfo, nil
+}
+
+// IsZeroer is used to check whether an object is zero to
+// determine whether it should be omitted when marshaling
+// with the omitempty flag. One notable implementation
+// is time.Time.
+type IsZeroer interface {
+	IsZero() bool
+}
+
+func isZero(v reflect.Value) bool {
+	kind := v.Kind()
+	if z, ok := v.Interface().(IsZeroer); ok {
+		if (kind == reflect.Ptr || kind == reflect.Interface) && v.IsNil() {
+			return true
+		}
+		return z.IsZero()
+	}
+	switch kind {
+	case reflect.String:
+		return len(v.String()) == 0
+	case reflect.Interface, reflect.Ptr:
+		return v.IsNil()
+	case reflect.Slice:
+		return v.Len() == 0
+	case reflect.Map:
+		return v.Len() == 0
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return v.Uint() == 0
+	case reflect.Bool:
+		return !v.Bool()
+	case reflect.Struct:
+		vt := v.Type()
+		for i := v.NumField() - 1; i >= 0; i-- {
+			if vt.Field(i).PkgPath != "" {
+				continue // Private field
+			}
+			if !isZero(v.Field(i)) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
