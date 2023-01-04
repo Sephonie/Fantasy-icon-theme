@@ -117,4 +117,57 @@ func is_breakz(b []byte, i int) bool {
 	return (        // is_break:
 	b[i] == '\r' || // CR (#xD)
 		b[i] == '\n' || // LF (#xA)
-		b[i] == 0xC2 && b[i+1] == 0x85 || // NEL
+		b[i] == 0xC2 && b[i+1] == 0x85 || // NEL (#x85)
+		b[i] == 0xE2 && b[i+1] == 0x80 && b[i+2] == 0xA8 || // LS (#x2028)
+		b[i] == 0xE2 && b[i+1] == 0x80 && b[i+2] == 0xA9 || // PS (#x2029)
+		// is_z:
+		b[i] == 0)
+}
+
+// Check if the character is a line break, space, or NUL.
+func is_spacez(b []byte, i int) bool {
+	//return is_space(b, i) || is_breakz(b, i)
+	return ( // is_space:
+	b[i] == ' ' ||
+		// is_breakz:
+		b[i] == '\r' || // CR (#xD)
+		b[i] == '\n' || // LF (#xA)
+		b[i] == 0xC2 && b[i+1] == 0x85 || // NEL (#x85)
+		b[i] == 0xE2 && b[i+1] == 0x80 && b[i+2] == 0xA8 || // LS (#x2028)
+		b[i] == 0xE2 && b[i+1] == 0x80 && b[i+2] == 0xA9 || // PS (#x2029)
+		b[i] == 0)
+}
+
+// Check if the character is a line break, space, tab, or NUL.
+func is_blankz(b []byte, i int) bool {
+	//return is_blank(b, i) || is_breakz(b, i)
+	return ( // is_blank:
+	b[i] == ' ' || b[i] == '\t' ||
+		// is_breakz:
+		b[i] == '\r' || // CR (#xD)
+		b[i] == '\n' || // LF (#xA)
+		b[i] == 0xC2 && b[i+1] == 0x85 || // NEL (#x85)
+		b[i] == 0xE2 && b[i+1] == 0x80 && b[i+2] == 0xA8 || // LS (#x2028)
+		b[i] == 0xE2 && b[i+1] == 0x80 && b[i+2] == 0xA9 || // PS (#x2029)
+		b[i] == 0)
+}
+
+// Determine the width of the character.
+func width(b byte) int {
+	// Don't replace these by a switch without first
+	// confirming that it is being inlined.
+	if b&0x80 == 0x00 {
+		return 1
+	}
+	if b&0xE0 == 0xC0 {
+		return 2
+	}
+	if b&0xF0 == 0xE0 {
+		return 3
+	}
+	if b&0xF8 == 0xF0 {
+		return 4
+	}
+	return 0
+
+}
