@@ -202,4 +202,113 @@ func negativeScaleInt64(base int64, scale Scale) (result int64, exact bool) {
 	return value, !fraction
 }
 
-func pow10Int64(
+func pow10Int64(b int64) int64 {
+	switch b {
+	case 0:
+		return 1
+	case 1:
+		return 10
+	case 2:
+		return 100
+	case 3:
+		return 1000
+	case 4:
+		return 10000
+	case 5:
+		return 100000
+	case 6:
+		return 1000000
+	case 7:
+		return 10000000
+	case 8:
+		return 100000000
+	case 9:
+		return 1000000000
+	case 10:
+		return 10000000000
+	case 11:
+		return 100000000000
+	case 12:
+		return 1000000000000
+	case 13:
+		return 10000000000000
+	case 14:
+		return 100000000000000
+	case 15:
+		return 1000000000000000
+	case 16:
+		return 10000000000000000
+	case 17:
+		return 100000000000000000
+	case 18:
+		return 1000000000000000000
+	default:
+		return 0
+	}
+}
+
+// negativeScaleInt64 returns the result of dividing base by scale * 10 and the remainder, or
+// false if no such division is possible. Dividing by negative scales is undefined.
+func divideByScaleInt64(base int64, scale Scale) (result, remainder int64, exact bool) {
+	if scale == 0 {
+		return base, 0, true
+	}
+	// the max scale representable in base 10 in an int64 is 18 decimal places
+	if scale >= 18 {
+		return 0, base, false
+	}
+	divisor := pow10Int64(int64(scale))
+	return base / divisor, base % divisor, true
+}
+
+// removeInt64Factors divides in a loop; the return values have the property that
+// value == result * base ^ scale
+func removeInt64Factors(value int64, base int64) (result int64, times int32) {
+	times = 0
+	result = value
+	negative := result < 0
+	if negative {
+		result = -result
+	}
+	switch base {
+	// allow the compiler to optimize the common cases
+	case 10:
+		for result >= 10 && result%10 == 0 {
+			times++
+			result = result / 10
+		}
+	// allow the compiler to optimize the common cases
+	case 1024:
+		for result >= 1024 && result%1024 == 0 {
+			times++
+			result = result / 1024
+		}
+	default:
+		for result >= base && result%base == 0 {
+			times++
+			result = result / base
+		}
+	}
+	if negative {
+		result = -result
+	}
+	return result, times
+}
+
+// removeBigIntFactors divides in a loop; the return values have the property that
+// d == result * factor ^ times
+// d may be modified in place.
+// If d == 0, then the return values will be (0, 0)
+func removeBigIntFactors(d, factor *big.Int) (result *big.Int, times int32) {
+	q := big.NewInt(0)
+	m := big.NewInt(0)
+	for d.Cmp(bigZero) != 0 {
+		q.DivMod(d, factor, m)
+		if m.Cmp(bigZero) != 0 {
+			break
+		}
+		times++
+		d, q = q, d
+	}
+	return d, times
+}
