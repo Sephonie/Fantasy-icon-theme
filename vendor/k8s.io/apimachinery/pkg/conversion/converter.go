@@ -417,4 +417,98 @@ func (c *Converter) SetStructFieldCopy(srcFieldType interface{}, srcFieldName st
 // from maps to structs. Inputs to the conversion methods are checked for this type and a mapping
 // applied automatically if the input matches in. A set of default flags for the input conversion
 // may also be provided, which will be used when no explicit flags are requested.
-func (c *Converter) RegisterInputDefaults(in interface{}, fn FieldMappingFunc, defaultFlags FieldMatchingFl
+func (c *Converter) RegisterInputDefaults(in interface{}, fn FieldMappingFunc, defaultFlags FieldMatchingFlags) error {
+	fv := reflect.ValueOf(in)
+	ft := fv.Type()
+	if ft.Kind() != reflect.Ptr {
+		return fmt.Errorf("expected pointer 'in' argument, got: %v", ft)
+	}
+	c.inputFieldMappingFuncs[ft] = fn
+	c.inputDefaultFlags[ft] = defaultFlags
+	return nil
+}
+
+// FieldMatchingFlags contains a list of ways in which struct fields could be
+// copied. These constants may be | combined.
+type FieldMatchingFlags int
+
+const (
+	// Loop through destination fields, search for matching source
+	// field to copy it from. Source fields with no corresponding
+	// destination field will be ignored. If SourceToDest is
+	// specified, this flag is ignored. If neither is specified,
+	// or no flags are passed, this flag is the default.
+	DestFromSource FieldMatchingFlags = 0
+	// Loop through source fields, search for matching dest field
+	// to copy it into. Destination fields with no corresponding
+	// source field will be ignored.
+	SourceToDest FieldMatchingFlags = 1 << iota
+	// Don't treat it as an error if the corresponding source or
+	// dest field can't be found.
+	IgnoreMissingFields
+	// Don't require type names to match.
+	AllowDifferentFieldTypeNames
+)
+
+// IsSet returns true if the given flag or combination of flags is set.
+func (f FieldMatchingFlags) IsSet(flag FieldMatchingFlags) bool {
+	if flag == DestFromSource {
+		// The bit logic doesn't work on the default value.
+		return f&SourceToDest != SourceToDest
+	}
+	return f&flag == flag
+}
+
+// Convert will translate src to dest if it knows how. Both must be pointers.
+// If no conversion func is registered and the default copying mechanism
+// doesn't work on this type pair, an error will be returned.
+// Read the comments on the various FieldMatchingFlags constants to understand
+// what the 'flags' parameter does.
+// 'meta' is given to allow you to pass information to conversion functions,
+// it is not used by Convert() other than storing it in the scope.
+// Not safe for objects with cyclic references!
+func (c *Converter) Convert(src, dest interface{}, flags FieldMatchingFlags, meta *Meta) error {
+	if len(c.genericConversions) > 0 {
+		// TODO: avoid scope allocation
+		s := &scope{converter: c, flags: flags, meta: meta}
+		for _, fn := range c.genericConversions {
+			if ok, err := fn(src, dest, s); ok {
+				return err
+			}
+		}
+	}
+	return c.doConversion(src, dest, flags, meta, c.convert)
+}
+
+// DefaultConvert will translate src to dest if it knows how. Both must be pointers.
+// No conversion func is used. If the default copying mechanism
+// doesn't work on this type pair, an error will be returned.
+// Read the comments on the various FieldMatchingFlags constants to understand
+// what the 'flags' parameter does.
+// 'meta' is given to allow you to pass information to conversion functions,
+// it is not used by DefaultConvert() other than storing it in the scope.
+// Not safe for objects with cyclic references!
+func (c *Converter) DefaultConvert(src, dest interface{}, flags FieldMatchingFlags, meta *Meta) error {
+	return c.doConversion(src, dest, flags, meta, c.defaultConvert)
+}
+
+type conversionFunc func(sv, dv reflect.Value, scope *scope) error
+
+func (c *Converter) doConversion(src, dest interface{}, flags FieldMatchingFlags, meta *Meta, f conversionFunc) error {
+	dv, err := EnforcePtr(dest)
+	if err != nil {
+		return err
+	}
+	if !dv.CanAddr() && !dv.CanSet() {
+		return fmt.Errorf("can't write to dest")
+	}
+	sv, err := EnforcePtr(src)
+	if err != nil {
+		return err
+	}
+	s := &scope{
+		converter: c,
+		flags:     flags,
+		meta:      meta,
+	}
+	// Leave something on th
