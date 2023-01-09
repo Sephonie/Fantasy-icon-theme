@@ -337,4 +337,84 @@ func verifyConversionFunctionSignature(ft reflect.Type) error {
 	var forErrorType error
 	// This convolution is necessary, otherwise TypeOf picks up on the fact
 	// that forErrorType is nil.
-	errorType := reflect.TypeOf(&forErrorTy
+	errorType := reflect.TypeOf(&forErrorType).Elem()
+	if ft.Out(0) != errorType {
+		return fmt.Errorf("expected error return, got: %v", ft)
+	}
+	return nil
+}
+
+// RegisterConversionFunc registers a conversion func with the
+// Converter. conversionFunc must take three parameters: a pointer to the input
+// type, a pointer to the output type, and a conversion.Scope (which should be
+// used if recursive conversion calls are desired).  It must return an error.
+//
+// Example:
+// c.RegisterConversionFunc(
+//         func(in *Pod, out *v1.Pod, s Scope) error {
+//                 // conversion logic...
+//                 return nil
+//          })
+func (c *Converter) RegisterConversionFunc(conversionFunc interface{}) error {
+	return c.conversionFuncs.Add(conversionFunc)
+}
+
+// Similar to RegisterConversionFunc, but registers conversion function that were
+// automatically generated.
+func (c *Converter) RegisterGeneratedConversionFunc(conversionFunc interface{}) error {
+	return c.generatedConversionFuncs.Add(conversionFunc)
+}
+
+// RegisterIgnoredConversion registers a "no-op" for conversion, where any requested
+// conversion between from and to is ignored.
+func (c *Converter) RegisterIgnoredConversion(from, to interface{}) error {
+	typeFrom := reflect.TypeOf(from)
+	typeTo := reflect.TypeOf(to)
+	if reflect.TypeOf(from).Kind() != reflect.Ptr {
+		return fmt.Errorf("expected pointer arg for 'from' param 0, got: %v", typeFrom)
+	}
+	if typeTo.Kind() != reflect.Ptr {
+		return fmt.Errorf("expected pointer arg for 'to' param 1, got: %v", typeTo)
+	}
+	c.ignoredConversions[typePair{typeFrom.Elem(), typeTo.Elem()}] = struct{}{}
+	return nil
+}
+
+// IsConversionIgnored returns true if the specified objects should be dropped during
+// conversion.
+func (c *Converter) IsConversionIgnored(inType, outType reflect.Type) bool {
+	_, found := c.ignoredConversions[typePair{inType, outType}]
+	return found
+}
+
+func (c *Converter) HasConversionFunc(inType, outType reflect.Type) bool {
+	_, found := c.conversionFuncs.fns[typePair{inType, outType}]
+	return found
+}
+
+func (c *Converter) ConversionFuncValue(inType, outType reflect.Type) (reflect.Value, bool) {
+	value, found := c.conversionFuncs.fns[typePair{inType, outType}]
+	return value, found
+}
+
+// SetStructFieldCopy registers a correspondence. Whenever a struct field is encountered
+// which has a type and name matching srcFieldType and srcFieldName, it wil be copied
+// into the field in the destination struct matching destFieldType & Name, if such a
+// field exists.
+// May be called multiple times, even for the same source field & type--all applicable
+// copies will be performed.
+func (c *Converter) SetStructFieldCopy(srcFieldType interface{}, srcFieldName string, destFieldType interface{}, destFieldName string) error {
+	st := reflect.TypeOf(srcFieldType)
+	dt := reflect.TypeOf(destFieldType)
+	srcKey := typeNamePair{st, srcFieldName}
+	destKey := typeNamePair{dt, destFieldName}
+	c.structFieldDests[srcKey] = append(c.structFieldDests[srcKey], destKey)
+	c.structFieldSources[destKey] = append(c.structFieldSources[destKey], srcKey)
+	return nil
+}
+
+// RegisterInputDefaults registers a field name mapping function, used when converting
+// from maps to structs. Inputs to the conversion methods are checked for this type and a mapping
+// applied automatically if the input matches in. A set of default flags for the input conversion
+// may also be provided, which will be used when no explicit flags are requested.
+func (c *Converter) RegisterInputDefaults(in interface{}, fn FieldMappingFunc, defaultFlags FieldMatchingFl
