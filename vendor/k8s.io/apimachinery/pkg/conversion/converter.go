@@ -116,4 +116,113 @@ func (c *Converter) WithConversions(fns ConversionFuncs) *Converter {
 
 // DefaultMeta returns the conversion FieldMappingFunc and meta for a given type.
 func (c *Converter) DefaultMeta(t reflect.Type) (FieldMatchingFlags, *Meta) {
-	return c.inputDefaultFlags
+	return c.inputDefaultFlags[t], &Meta{
+		KeyNameMapping: c.inputFieldMappingFuncs[t],
+	}
+}
+
+// Convert_Slice_byte_To_Slice_byte prevents recursing into every byte
+func Convert_Slice_byte_To_Slice_byte(in *[]byte, out *[]byte, s Scope) error {
+	if *in == nil {
+		*out = nil
+		return nil
+	}
+	*out = make([]byte, len(*in))
+	copy(*out, *in)
+	return nil
+}
+
+// Scope is passed to conversion funcs to allow them to continue an ongoing conversion.
+// If multiple converters exist in the system, Scope will allow you to use the correct one
+// from a conversion function--that is, the one your conversion function was called by.
+type Scope interface {
+	// Call Convert to convert sub-objects. Note that if you call it with your own exact
+	// parameters, you'll run out of stack space before anything useful happens.
+	Convert(src, dest interface{}, flags FieldMatchingFlags) error
+
+	// DefaultConvert performs the default conversion, without calling a conversion func
+	// on the current stack frame. This makes it safe to call from a conversion func.
+	DefaultConvert(src, dest interface{}, flags FieldMatchingFlags) error
+
+	// SrcTags and DestTags contain the struct tags that src and dest had, respectively.
+	// If the enclosing object was not a struct, then these will contain no tags, of course.
+	SrcTag() reflect.StructTag
+	DestTag() reflect.StructTag
+
+	// Flags returns the flags with which the conversion was started.
+	Flags() FieldMatchingFlags
+
+	// Meta returns any information originally passed to Convert.
+	Meta() *Meta
+}
+
+// FieldMappingFunc can convert an input field value into different values, depending on
+// the value of the source or destination struct tags.
+type FieldMappingFunc func(key string, sourceTag, destTag reflect.StructTag) (source string, dest string)
+
+func NewConversionFuncs() ConversionFuncs {
+	return ConversionFuncs{fns: make(map[typePair]reflect.Value)}
+}
+
+type ConversionFuncs struct {
+	fns map[typePair]reflect.Value
+}
+
+// Add adds the provided conversion functions to the lookup table - they must have the signature
+// `func(type1, type2, Scope) error`. Functions are added in the order passed and will override
+// previously registered pairs.
+func (c ConversionFuncs) Add(fns ...interface{}) error {
+	for _, fn := range fns {
+		fv := reflect.ValueOf(fn)
+		ft := fv.Type()
+		if err := verifyConversionFunctionSignature(ft); err != nil {
+			return err
+		}
+		c.fns[typePair{ft.In(0).Elem(), ft.In(1).Elem()}] = fv
+	}
+	return nil
+}
+
+// Merge returns a new ConversionFuncs that contains all conversions from
+// both other and c, with other conversions taking precedence.
+func (c ConversionFuncs) Merge(other ConversionFuncs) ConversionFuncs {
+	merged := NewConversionFuncs()
+	for k, v := range c.fns {
+		merged.fns[k] = v
+	}
+	for k, v := range other.fns {
+		merged.fns[k] = v
+	}
+	return merged
+}
+
+// Meta is supplied by Scheme, when it calls Convert.
+type Meta struct {
+	// KeyNameMapping is an optional function which may map the listed key (field name)
+	// into a source and destination value.
+	KeyNameMapping FieldMappingFunc
+	// Context is an optional field that callers may use to pass info to conversion functions.
+	Context interface{}
+}
+
+// scope contains information about an ongoing conversion.
+type scope struct {
+	converter *Converter
+	meta      *Meta
+	flags     FieldMatchingFlags
+
+	// srcStack & destStack are separate because they may not have a 1:1
+	// relationship.
+	srcStack  scopeStack
+	destStack scopeStack
+}
+
+type scopeStackElem struct {
+	tag   reflect.StructTag
+	value reflect.Value
+	key   string
+}
+
+type scopeStack []scopeStackElem
+
+f
