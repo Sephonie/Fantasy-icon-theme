@@ -225,4 +225,116 @@ type scopeStackElem struct {
 
 type scopeStack []scopeStackElem
 
-f
+func (s *scopeStack) pop() {
+	n := len(*s)
+	*s = (*s)[:n-1]
+}
+
+func (s *scopeStack) push(e scopeStackElem) {
+	*s = append(*s, e)
+}
+
+func (s *scopeStack) top() *scopeStackElem {
+	return &(*s)[len(*s)-1]
+}
+
+func (s scopeStack) describe() string {
+	desc := ""
+	if len(s) > 1 {
+		desc = "(" + s[1].value.Type().String() + ")"
+	}
+	for i, v := range s {
+		if i < 2 {
+			// First layer on stack is not real; second is handled specially above.
+			continue
+		}
+		if v.key == "" {
+			desc += fmt.Sprintf(".%v", v.value.Type())
+		} else {
+			desc += fmt.Sprintf(".%v", v.key)
+		}
+	}
+	return desc
+}
+
+// Formats src & dest as indices for printing.
+func (s *scope) setIndices(src, dest int) {
+	s.srcStack.top().key = fmt.Sprintf("[%v]", src)
+	s.destStack.top().key = fmt.Sprintf("[%v]", dest)
+}
+
+// Formats src & dest as map keys for printing.
+func (s *scope) setKeys(src, dest interface{}) {
+	s.srcStack.top().key = fmt.Sprintf(`["%v"]`, src)
+	s.destStack.top().key = fmt.Sprintf(`["%v"]`, dest)
+}
+
+// Convert continues a conversion.
+func (s *scope) Convert(src, dest interface{}, flags FieldMatchingFlags) error {
+	return s.converter.Convert(src, dest, flags, s.meta)
+}
+
+// DefaultConvert continues a conversion, performing a default conversion (no conversion func)
+// for the current stack frame.
+func (s *scope) DefaultConvert(src, dest interface{}, flags FieldMatchingFlags) error {
+	return s.converter.DefaultConvert(src, dest, flags, s.meta)
+}
+
+// SrcTag returns the tag of the struct containing the current source item, if any.
+func (s *scope) SrcTag() reflect.StructTag {
+	return s.srcStack.top().tag
+}
+
+// DestTag returns the tag of the struct containing the current dest item, if any.
+func (s *scope) DestTag() reflect.StructTag {
+	return s.destStack.top().tag
+}
+
+// Flags returns the flags with which the current conversion was started.
+func (s *scope) Flags() FieldMatchingFlags {
+	return s.flags
+}
+
+// Meta returns the meta object that was originally passed to Convert.
+func (s *scope) Meta() *Meta {
+	return s.meta
+}
+
+// describe prints the path to get to the current (source, dest) values.
+func (s *scope) describe() (src, dest string) {
+	return s.srcStack.describe(), s.destStack.describe()
+}
+
+// error makes an error that includes information about where we were in the objects
+// we were asked to convert.
+func (s *scope) errorf(message string, args ...interface{}) error {
+	srcPath, destPath := s.describe()
+	where := fmt.Sprintf("converting %v to %v: ", srcPath, destPath)
+	return fmt.Errorf(where+message, args...)
+}
+
+// Verifies whether a conversion function has a correct signature.
+func verifyConversionFunctionSignature(ft reflect.Type) error {
+	if ft.Kind() != reflect.Func {
+		return fmt.Errorf("expected func, got: %v", ft)
+	}
+	if ft.NumIn() != 3 {
+		return fmt.Errorf("expected three 'in' params, got: %v", ft)
+	}
+	if ft.NumOut() != 1 {
+		return fmt.Errorf("expected one 'out' param, got: %v", ft)
+	}
+	if ft.In(0).Kind() != reflect.Ptr {
+		return fmt.Errorf("expected pointer arg for 'in' param 0, got: %v", ft)
+	}
+	if ft.In(1).Kind() != reflect.Ptr {
+		return fmt.Errorf("expected pointer arg for 'in' param 1, got: %v", ft)
+	}
+	scopeType := Scope(nil)
+	if e, a := reflect.TypeOf(&scopeType).Elem(), ft.In(2); e != a {
+		return fmt.Errorf("expected '%v' arg for 'in' param 2, got '%v' (%v)", e, a, ft)
+	}
+	var forErrorType error
+	// This convolution is necessary, otherwise TypeOf picks up on the fact
+	// that forErrorType is nil.
+	errorType := reflect.TypeOf(&forErrorTy
