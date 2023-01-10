@@ -511,4 +511,131 @@ func (c *Converter) doConversion(src, dest interface{}, flags FieldMatchingFlags
 		flags:     flags,
 		meta:      meta,
 	}
-	// Leave something on th
+	// Leave something on the stack, so that calls to struct tag getters never fail.
+	s.srcStack.push(scopeStackElem{})
+	s.destStack.push(scopeStackElem{})
+	return f(sv, dv, s)
+}
+
+// callCustom calls 'custom' with sv & dv. custom must be a conversion function.
+func (c *Converter) callCustom(sv, dv, custom reflect.Value, scope *scope) error {
+	if !sv.CanAddr() {
+		sv2 := reflect.New(sv.Type())
+		sv2.Elem().Set(sv)
+		sv = sv2
+	} else {
+		sv = sv.Addr()
+	}
+	if !dv.CanAddr() {
+		if !dv.CanSet() {
+			return scope.errorf("can't addr or set dest.")
+		}
+		dvOrig := dv
+		dv := reflect.New(dvOrig.Type())
+		defer func() { dvOrig.Set(dv) }()
+	} else {
+		dv = dv.Addr()
+	}
+	args := []reflect.Value{sv, dv, reflect.ValueOf(scope)}
+	ret := custom.Call(args)[0].Interface()
+	// This convolution is necessary because nil interfaces won't convert
+	// to errors.
+	if ret == nil {
+		return nil
+	}
+	return ret.(error)
+}
+
+// convert recursively copies sv into dv, calling an appropriate conversion function if
+// one is registered.
+func (c *Converter) convert(sv, dv reflect.Value, scope *scope) error {
+	dt, st := dv.Type(), sv.Type()
+	pair := typePair{st, dt}
+
+	// ignore conversions of this type
+	if _, ok := c.ignoredConversions[pair]; ok {
+		if c.Debug != nil {
+			c.Debug.Logf("Ignoring conversion of '%v' to '%v'", st, dt)
+		}
+		return nil
+	}
+
+	// Convert sv to dv.
+	if fv, ok := c.conversionFuncs.fns[pair]; ok {
+		if c.Debug != nil {
+			c.Debug.Logf("Calling custom conversion of '%v' to '%v'", st, dt)
+		}
+		return c.callCustom(sv, dv, fv, scope)
+	}
+	if fv, ok := c.generatedConversionFuncs.fns[pair]; ok {
+		if c.Debug != nil {
+			c.Debug.Logf("Calling generated conversion of '%v' to '%v'", st, dt)
+		}
+		return c.callCustom(sv, dv, fv, scope)
+	}
+
+	return c.defaultConvert(sv, dv, scope)
+}
+
+// defaultConvert recursively copies sv into dv. no conversion function is called
+// for the current stack frame (but conversion functions may be called for nested objects)
+func (c *Converter) defaultConvert(sv, dv reflect.Value, scope *scope) error {
+	dt, st := dv.Type(), sv.Type()
+
+	if !dv.CanSet() {
+		return scope.errorf("Cannot set dest. (Tried to deep copy something with unexported fields?)")
+	}
+
+	if !scope.flags.IsSet(AllowDifferentFieldTypeNames) && c.nameFunc(dt) != c.nameFunc(st) {
+		return scope.errorf(
+			"type names don't match (%v, %v), and no conversion 'func (%v, %v) error' registered.",
+			c.nameFunc(st), c.nameFunc(dt), st, dt)
+	}
+
+	switch st.Kind() {
+	case reflect.Map, reflect.Ptr, reflect.Slice, reflect.Interface, reflect.Struct:
+		// Don't copy these via assignment/conversion!
+	default:
+		// This should handle all simple types.
+		if st.AssignableTo(dt) {
+			dv.Set(sv)
+			return nil
+		}
+		if st.ConvertibleTo(dt) {
+			dv.Set(sv.Convert(dt))
+			return nil
+		}
+	}
+
+	if c.Debug != nil {
+		c.Debug.Logf("Trying to convert '%v' to '%v'", st, dt)
+	}
+
+	scope.srcStack.push(scopeStackElem{value: sv})
+	scope.destStack.push(scopeStackElem{value: dv})
+	defer scope.srcStack.pop()
+	defer scope.destStack.pop()
+
+	switch dv.Kind() {
+	case reflect.Struct:
+		return c.convertKV(toKVValue(sv), toKVValue(dv), scope)
+	case reflect.Slice:
+		if sv.IsNil() {
+			// Don't make a zero-length slice.
+			dv.Set(reflect.Zero(dt))
+			return nil
+		}
+		dv.Set(reflect.MakeSlice(dt, sv.Len(), sv.Cap()))
+		for i := 0; i < sv.Len(); i++ {
+			scope.setIndices(i, i)
+			if err := c.convert(sv.Index(i), dv.Index(i), scope); err != nil {
+				return err
+			}
+		}
+	case reflect.Ptr:
+		if sv.IsNil() {
+			// Don't copy a nil ptr!
+			dv.Set(reflect.Zero(dt))
+			return nil
+		}
+		dv.Set(reflect.N
