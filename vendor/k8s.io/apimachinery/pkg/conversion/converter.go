@@ -783,4 +783,116 @@ func (a structAdaptor) confirmSet(key string, v reflect.Value) bool {
 	return true
 }
 
-// convertKV can convert things that 
+// convertKV can convert things that consist of key/value pairs, like structs
+// and some maps.
+func (c *Converter) convertKV(skv, dkv kvValue, scope *scope) error {
+	if skv == nil || dkv == nil {
+		// TODO: add keys to stack to support really understandable error messages.
+		return fmt.Errorf("Unable to convert %#v to %#v", skv, dkv)
+	}
+
+	lister := dkv
+	if scope.flags.IsSet(SourceToDest) {
+		lister = skv
+	}
+
+	var mapping FieldMappingFunc
+	if scope.meta != nil && scope.meta.KeyNameMapping != nil {
+		mapping = scope.meta.KeyNameMapping
+	}
+
+	for _, key := range lister.keys() {
+		if found, err := c.checkField(key, skv, dkv, scope); found {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		stag := skv.tagOf(key)
+		dtag := dkv.tagOf(key)
+		skey := key
+		dkey := key
+		if mapping != nil {
+			skey, dkey = scope.meta.KeyNameMapping(key, stag, dtag)
+		}
+
+		df := dkv.value(dkey)
+		sf := skv.value(skey)
+		if !df.IsValid() || !sf.IsValid() {
+			switch {
+			case scope.flags.IsSet(IgnoreMissingFields):
+				// No error.
+			case scope.flags.IsSet(SourceToDest):
+				return scope.errorf("%v not present in dest", dkey)
+			default:
+				return scope.errorf("%v not present in src", skey)
+			}
+			continue
+		}
+		scope.srcStack.top().key = skey
+		scope.srcStack.top().tag = stag
+		scope.destStack.top().key = dkey
+		scope.destStack.top().tag = dtag
+		if err := c.convert(sf, df, scope); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkField returns true if the field name matches any of the struct
+// field copying rules. The error should be ignored if it returns false.
+func (c *Converter) checkField(fieldName string, skv, dkv kvValue, scope *scope) (bool, error) {
+	replacementMade := false
+	if scope.flags.IsSet(DestFromSource) {
+		df := dkv.value(fieldName)
+		if !df.IsValid() {
+			return false, nil
+		}
+		destKey := typeNamePair{df.Type(), fieldName}
+		// Check each of the potential source (type, name) pairs to see if they're
+		// present in sv.
+		for _, potentialSourceKey := range c.structFieldSources[destKey] {
+			sf := skv.value(potentialSourceKey.fieldName)
+			if !sf.IsValid() {
+				continue
+			}
+			if sf.Type() == potentialSourceKey.fieldType {
+				// Both the source's name and type matched, so copy.
+				scope.srcStack.top().key = potentialSourceKey.fieldName
+				scope.destStack.top().key = fieldName
+				if err := c.convert(sf, df, scope); err != nil {
+					return true, err
+				}
+				dkv.confirmSet(fieldName, df)
+				replacementMade = true
+			}
+		}
+		return replacementMade, nil
+	}
+
+	sf := skv.value(fieldName)
+	if !sf.IsValid() {
+		return false, nil
+	}
+	srcKey := typeNamePair{sf.Type(), fieldName}
+	// Check each of the potential dest (type, name) pairs to see if they're
+	// present in dv.
+	for _, potentialDestKey := range c.structFieldDests[srcKey] {
+		df := dkv.value(potentialDestKey.fieldName)
+		if !df.IsValid() {
+			continue
+		}
+		if df.Type() == potentialDestKey.fieldType {
+			// Both the dest's name and type matched, so copy.
+			scope.srcStack.top().key = fieldName
+			scope.destStack.top().key = potentialDestKey.fieldName
+			if err := c.convert(sf, df, scope); err != nil {
+				return true, err
+			}
+			dkv.confirmSet(potentialDestKey.fieldName, df)
+			replacementMade = true
+		}
+	}
+	return replacementMade, nil
+}
