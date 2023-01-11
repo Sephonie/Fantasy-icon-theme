@@ -638,4 +638,149 @@ func (c *Converter) defaultConvert(sv, dv reflect.Value, scope *scope) error {
 			dv.Set(reflect.Zero(dt))
 			return nil
 		}
-		dv.Set(reflect.N
+		dv.Set(reflect.New(dt.Elem()))
+		switch st.Kind() {
+		case reflect.Ptr, reflect.Interface:
+			return c.convert(sv.Elem(), dv.Elem(), scope)
+		default:
+			return c.convert(sv, dv.Elem(), scope)
+		}
+	case reflect.Map:
+		if sv.IsNil() {
+			// Don't copy a nil ptr!
+			dv.Set(reflect.Zero(dt))
+			return nil
+		}
+		dv.Set(reflect.MakeMap(dt))
+		for _, sk := range sv.MapKeys() {
+			dk := reflect.New(dt.Key()).Elem()
+			if err := c.convert(sk, dk, scope); err != nil {
+				return err
+			}
+			dkv := reflect.New(dt.Elem()).Elem()
+			scope.setKeys(sk.Interface(), dk.Interface())
+			// TODO:  sv.MapIndex(sk) may return a value with CanAddr() == false,
+			// because a map[string]struct{} does not allow a pointer reference.
+			// Calling a custom conversion function defined for the map value
+			// will panic. Example is PodInfo map[string]ContainerStatus.
+			if err := c.convert(sv.MapIndex(sk), dkv, scope); err != nil {
+				return err
+			}
+			dv.SetMapIndex(dk, dkv)
+		}
+	case reflect.Interface:
+		if sv.IsNil() {
+			// Don't copy a nil interface!
+			dv.Set(reflect.Zero(dt))
+			return nil
+		}
+		tmpdv := reflect.New(sv.Elem().Type()).Elem()
+		if err := c.convert(sv.Elem(), tmpdv, scope); err != nil {
+			return err
+		}
+		dv.Set(reflect.ValueOf(tmpdv.Interface()))
+		return nil
+	default:
+		return scope.errorf("couldn't copy '%v' into '%v'; didn't understand types", st, dt)
+	}
+	return nil
+}
+
+var stringType = reflect.TypeOf("")
+
+func toKVValue(v reflect.Value) kvValue {
+	switch v.Kind() {
+	case reflect.Struct:
+		return structAdaptor(v)
+	case reflect.Map:
+		if v.Type().Key().AssignableTo(stringType) {
+			return stringMapAdaptor(v)
+		}
+	}
+
+	return nil
+}
+
+// kvValue lets us write the same conversion logic to work with both maps
+// and structs. Only maps with string keys make sense for this.
+type kvValue interface {
+	// returns all keys, as a []string.
+	keys() []string
+	// Will just return "" for maps.
+	tagOf(key string) reflect.StructTag
+	// Will return the zero Value if the key doesn't exist.
+	value(key string) reflect.Value
+	// Maps require explicit setting-- will do nothing for structs.
+	// Returns false on failure.
+	confirmSet(key string, v reflect.Value) bool
+}
+
+type stringMapAdaptor reflect.Value
+
+func (a stringMapAdaptor) len() int {
+	return reflect.Value(a).Len()
+}
+
+func (a stringMapAdaptor) keys() []string {
+	v := reflect.Value(a)
+	keys := make([]string, v.Len())
+	for i, v := range v.MapKeys() {
+		if v.IsNil() {
+			continue
+		}
+		switch t := v.Interface().(type) {
+		case string:
+			keys[i] = t
+		}
+	}
+	return keys
+}
+
+func (a stringMapAdaptor) tagOf(key string) reflect.StructTag {
+	return ""
+}
+
+func (a stringMapAdaptor) value(key string) reflect.Value {
+	return reflect.Value(a).MapIndex(reflect.ValueOf(key))
+}
+
+func (a stringMapAdaptor) confirmSet(key string, v reflect.Value) bool {
+	return true
+}
+
+type structAdaptor reflect.Value
+
+func (a structAdaptor) len() int {
+	v := reflect.Value(a)
+	return v.Type().NumField()
+}
+
+func (a structAdaptor) keys() []string {
+	v := reflect.Value(a)
+	t := v.Type()
+	keys := make([]string, t.NumField())
+	for i := range keys {
+		keys[i] = t.Field(i).Name
+	}
+	return keys
+}
+
+func (a structAdaptor) tagOf(key string) reflect.StructTag {
+	v := reflect.Value(a)
+	field, ok := v.Type().FieldByName(key)
+	if ok {
+		return field.Tag
+	}
+	return ""
+}
+
+func (a structAdaptor) value(key string) reflect.Value {
+	v := reflect.Value(a)
+	return v.FieldByName(key)
+}
+
+func (a structAdaptor) confirmSet(key string, v reflect.Value) bool {
+	return true
+}
+
+// convertKV can convert things that 
