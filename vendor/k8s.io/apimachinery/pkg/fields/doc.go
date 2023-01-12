@@ -1,3 +1,4 @@
+
 /*
 Copyright 2015 The Kubernetes Authors.
 
@@ -14,23 +15,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package conversion
-
-import (
-	"k8s.io/apimachinery/third_party/forked/golang/reflect"
-)
-
-// The code for this type must be located in third_party, since it forks from
-// go std lib. But for convenience, we expose the type here, too.
-type Equalities struct {
-	reflect.Equalities
-}
-
-// For convenience, panics on errors
-func EqualitiesOrDie(funcs ...interface{}) Equalities {
-	e := Equalities{reflect.Equalities{}}
-	if err := e.AddFuncs(funcs...); err != nil {
-		panic(err)
-	}
-	return e
-}
+// Package fields implements a simple field system, parsing and matching
+// selectors with sets of fields.
+package fields // import "k8s.io/apimachinery/pkg/fields"

@@ -1,5 +1,6 @@
+
 /*
-Copyright 2015 The Kubernetes Authors.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +15,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package conversion
-
-import (
-	"k8s.io/apimachinery/third_party/forked/golang/reflect"
-)
-
-// The code for this type must be located in third_party, since it forks from
-// go std lib. But for convenience, we expose the type here, too.
-type Equalities struct {
-	reflect.Equalities
-}
-
-// For convenience, panics on errors
-func EqualitiesOrDie(funcs ...interface{}) Equalities {
-	e := Equalities{reflect.Equalities{}}
-	if err := e.AddFuncs(funcs...); err != nil {
-		panic(err)
-	}
-	return e
-}
+// Package queryparams provides conversion from versioned
+// runtime objects to URL query values
+package queryparams // import "k8s.io/apimachinery/pkg/conversion/queryparams"
