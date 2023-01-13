@@ -124,4 +124,98 @@ type Requirement struct {
 // If any of these rules is violated, an error is returned:
 // (1) The operator can only be In, NotIn, Equals, DoubleEquals, NotEquals, Exists, or DoesNotExist.
 // (2) If the operator is In or NotIn, the values set must be non-empty.
-// (3) If the operator is Equa
+// (3) If the operator is Equals, DoubleEquals, or NotEquals, the values set must contain one value.
+// (4) If the operator is Exists or DoesNotExist, the value set must be empty.
+// (5) If the operator is Gt or Lt, the values set must contain only one value, which will be interpreted as an integer.
+// (6) The key is invalid due to its length, or sequence
+//     of characters. See validateLabelKey for more details.
+//
+// The empty string is a valid value in the input values set.
+func NewRequirement(key string, op selection.Operator, vals []string) (*Requirement, error) {
+	if err := validateLabelKey(key); err != nil {
+		return nil, err
+	}
+	switch op {
+	case selection.In, selection.NotIn:
+		if len(vals) == 0 {
+			return nil, fmt.Errorf("for 'in', 'notin' operators, values set can't be empty")
+		}
+	case selection.Equals, selection.DoubleEquals, selection.NotEquals:
+		if len(vals) != 1 {
+			return nil, fmt.Errorf("exact-match compatibility requires one single value")
+		}
+	case selection.Exists, selection.DoesNotExist:
+		if len(vals) != 0 {
+			return nil, fmt.Errorf("values set must be empty for exists and does not exist")
+		}
+	case selection.GreaterThan, selection.LessThan:
+		if len(vals) != 1 {
+			return nil, fmt.Errorf("for 'Gt', 'Lt' operators, exactly one value is required")
+		}
+		for i := range vals {
+			if _, err := strconv.ParseInt(vals[i], 10, 64); err != nil {
+				return nil, fmt.Errorf("for 'Gt', 'Lt' operators, the value must be an integer")
+			}
+		}
+	default:
+		return nil, fmt.Errorf("operator '%v' is not recognized", op)
+	}
+
+	for i := range vals {
+		if err := validateLabelValue(vals[i]); err != nil {
+			return nil, err
+		}
+	}
+	sort.Strings(vals)
+	return &Requirement{key: key, operator: op, strValues: vals}, nil
+}
+
+func (r *Requirement) hasValue(value string) bool {
+	for i := range r.strValues {
+		if r.strValues[i] == value {
+			return true
+		}
+	}
+	return false
+}
+
+// Matches returns true if the Requirement matches the input Labels.
+// There is a match in the following cases:
+// (1) The operator is Exists and Labels has the Requirement's key.
+// (2) The operator is In, Labels has the Requirement's key and Labels'
+//     value for that key is in Requirement's value set.
+// (3) The operator is NotIn, Labels has the Requirement's key and
+//     Labels' value for that key is not in Requirement's value set.
+// (4) The operator is DoesNotExist or NotIn and Labels does not have the
+//     Requirement's key.
+// (5) The operator is GreaterThanOperator or LessThanOperator, and Labels has
+//     the Requirement's key and the corresponding value satisfies mathematical inequality.
+func (r *Requirement) Matches(ls Labels) bool {
+	switch r.operator {
+	case selection.In, selection.Equals, selection.DoubleEquals:
+		if !ls.Has(r.key) {
+			return false
+		}
+		return r.hasValue(ls.Get(r.key))
+	case selection.NotIn, selection.NotEquals:
+		if !ls.Has(r.key) {
+			return true
+		}
+		return !r.hasValue(ls.Get(r.key))
+	case selection.Exists:
+		return ls.Has(r.key)
+	case selection.DoesNotExist:
+		return !ls.Has(r.key)
+	case selection.GreaterThan, selection.LessThan:
+		if !ls.Has(r.key) {
+			return false
+		}
+		lsValue, err := strconv.ParseInt(ls.Get(r.key), 10, 64)
+		if err != nil {
+			glog.V(10).Infof("ParseInt failed for value %+v in label %+v, %+v", ls.Get(r.key), ls, err)
+			return false
+		}
+
+		// There should be only one strValue in r.strValues, and can be converted to a integer.
+		if len(r.strValues) != 1 {
+			glog.V(10).Infof("Invalid values count %+v of requirement %#v, for 'Gt', 'Lt' operators, exactly one value is required", 
