@@ -487,4 +487,132 @@ SpecialSymbolLoop:
 		}
 	}
 	if lastScannedItem.tok == 0 {
-		return ErrorToken, fmt.Spr
+		return ErrorToken, fmt.Sprintf("error expected: keyword found '%s'", buffer)
+	}
+	return lastScannedItem.tok, lastScannedItem.literal
+}
+
+// skipWhiteSpaces consumes all blank characters
+// returning the first non blank character
+func (l *Lexer) skipWhiteSpaces(ch byte) byte {
+	for {
+		if !isWhitespace(ch) {
+			return ch
+		}
+		ch = l.read()
+	}
+}
+
+// Lex returns a pair of Token and the literal
+// literal is meaningfull only for IdentifierToken token
+func (l *Lexer) Lex() (tok Token, lit string) {
+	switch ch := l.skipWhiteSpaces(l.read()); {
+	case ch == 0:
+		return EndOfStringToken, ""
+	case isSpecialSymbol(ch):
+		l.unread()
+		return l.scanSpecialSymbol()
+	default:
+		l.unread()
+		return l.scanIDOrKeyword()
+	}
+}
+
+// Parser data structure contains the label selector parser data structure
+type Parser struct {
+	l            *Lexer
+	scannedItems []ScannedItem
+	position     int
+}
+
+// ParserContext represents context during parsing:
+// some literal for example 'in' and 'notin' can be
+// recognized as operator for example 'x in (a)' but
+// it can be recognized as value for example 'value in (in)'
+type ParserContext int
+
+const (
+	// KeyAndOperator represents key and operator
+	KeyAndOperator ParserContext = iota
+	// Values represents values
+	Values
+)
+
+// lookahead func returns the current token and string. No increment of current position
+func (p *Parser) lookahead(context ParserContext) (Token, string) {
+	tok, lit := p.scannedItems[p.position].tok, p.scannedItems[p.position].literal
+	if context == Values {
+		switch tok {
+		case InToken, NotInToken:
+			tok = IdentifierToken
+		}
+	}
+	return tok, lit
+}
+
+// consume returns current token and string. Increments the position
+func (p *Parser) consume(context ParserContext) (Token, string) {
+	p.position++
+	tok, lit := p.scannedItems[p.position-1].tok, p.scannedItems[p.position-1].literal
+	if context == Values {
+		switch tok {
+		case InToken, NotInToken:
+			tok = IdentifierToken
+		}
+	}
+	return tok, lit
+}
+
+// scan runs through the input string and stores the ScannedItem in an array
+// Parser can now lookahead and consume the tokens
+func (p *Parser) scan() {
+	for {
+		token, literal := p.l.Lex()
+		p.scannedItems = append(p.scannedItems, ScannedItem{token, literal})
+		if token == EndOfStringToken {
+			break
+		}
+	}
+}
+
+// parse runs the left recursive descending algorithm
+// on input string. It returns a list of Requirement objects.
+func (p *Parser) parse() (internalSelector, error) {
+	p.scan() // init scannedItems
+
+	var requirements internalSelector
+	for {
+		tok, lit := p.lookahead(Values)
+		switch tok {
+		case IdentifierToken, DoesNotExistToken:
+			r, err := p.parseRequirement()
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse requirement: %v", err)
+			}
+			requirements = append(requirements, *r)
+			t, l := p.consume(Values)
+			switch t {
+			case EndOfStringToken:
+				return requirements, nil
+			case CommaToken:
+				t2, l2 := p.lookahead(Values)
+				if t2 != IdentifierToken && t2 != DoesNotExistToken {
+					return nil, fmt.Errorf("found '%s', expected: identifier after ','", l2)
+				}
+			default:
+				return nil, fmt.Errorf("found '%s', expected: ',' or 'end of string'", l)
+			}
+		case EndOfStringToken:
+			return requirements, nil
+		default:
+			return nil, fmt.Errorf("found '%s', expected: !, identifier, or 'end of string'", lit)
+		}
+	}
+}
+
+func (p *Parser) parseRequirement() (*Requirement, error) {
+	key, operator, err := p.parseKeyAndInferOperator()
+	if err != nil {
+		return nil, err
+	}
+	if operator == selecti
