@@ -218,4 +218,138 @@ func (r *Requirement) Matches(ls Labels) bool {
 
 		// There should be only one strValue in r.strValues, and can be converted to a integer.
 		if len(r.strValues) != 1 {
-			glog.V(10).Infof("Invalid values count %+v of requirement %#v, for 'Gt', 'Lt' operators, exactly one value is required", 
+			glog.V(10).Infof("Invalid values count %+v of requirement %#v, for 'Gt', 'Lt' operators, exactly one value is required", len(r.strValues), r)
+			return false
+		}
+
+		var rValue int64
+		for i := range r.strValues {
+			rValue, err = strconv.ParseInt(r.strValues[i], 10, 64)
+			if err != nil {
+				glog.V(10).Infof("ParseInt failed for value %+v in requirement %#v, for 'Gt', 'Lt' operators, the value must be an integer", r.strValues[i], r)
+				return false
+			}
+		}
+		return (r.operator == selection.GreaterThan && lsValue > rValue) || (r.operator == selection.LessThan && lsValue < rValue)
+	default:
+		return false
+	}
+}
+
+// Key returns requirement key
+func (r *Requirement) Key() string {
+	return r.key
+}
+
+// Operator returns requirement operator
+func (r *Requirement) Operator() selection.Operator {
+	return r.operator
+}
+
+// Values returns requirement values
+func (r *Requirement) Values() sets.String {
+	ret := sets.String{}
+	for i := range r.strValues {
+		ret.Insert(r.strValues[i])
+	}
+	return ret
+}
+
+// Empty returns true if the internalSelector doesn't restrict selection space
+func (lsel internalSelector) Empty() bool {
+	if lsel == nil {
+		return true
+	}
+	return len(lsel) == 0
+}
+
+// String returns a human-readable string that represents this
+// Requirement. If called on an invalid Requirement, an error is
+// returned. See NewRequirement for creating a valid Requirement.
+func (r *Requirement) String() string {
+	var buffer bytes.Buffer
+	if r.operator == selection.DoesNotExist {
+		buffer.WriteString("!")
+	}
+	buffer.WriteString(r.key)
+
+	switch r.operator {
+	case selection.Equals:
+		buffer.WriteString("=")
+	case selection.DoubleEquals:
+		buffer.WriteString("==")
+	case selection.NotEquals:
+		buffer.WriteString("!=")
+	case selection.In:
+		buffer.WriteString(" in ")
+	case selection.NotIn:
+		buffer.WriteString(" notin ")
+	case selection.GreaterThan:
+		buffer.WriteString(">")
+	case selection.LessThan:
+		buffer.WriteString("<")
+	case selection.Exists, selection.DoesNotExist:
+		return buffer.String()
+	}
+
+	switch r.operator {
+	case selection.In, selection.NotIn:
+		buffer.WriteString("(")
+	}
+	if len(r.strValues) == 1 {
+		buffer.WriteString(r.strValues[0])
+	} else { // only > 1 since == 0 prohibited by NewRequirement
+		buffer.WriteString(strings.Join(r.strValues, ","))
+	}
+
+	switch r.operator {
+	case selection.In, selection.NotIn:
+		buffer.WriteString(")")
+	}
+	return buffer.String()
+}
+
+// Add adds requirements to the selector. It copies the current selector returning a new one
+func (lsel internalSelector) Add(reqs ...Requirement) Selector {
+	var sel internalSelector
+	for ix := range lsel {
+		sel = append(sel, lsel[ix])
+	}
+	for _, r := range reqs {
+		sel = append(sel, r)
+	}
+	sort.Sort(ByKey(sel))
+	return sel
+}
+
+// Matches for a internalSelector returns true if all
+// its Requirements match the input Labels. If any
+// Requirement does not match, false is returned.
+func (lsel internalSelector) Matches(l Labels) bool {
+	for ix := range lsel {
+		if matches := lsel[ix].Matches(l); !matches {
+			return false
+		}
+	}
+	return true
+}
+
+func (lsel internalSelector) Requirements() (Requirements, bool) { return Requirements(lsel), true }
+
+// String returns a comma-separated string of all
+// the internalSelector Requirements' human-readable strings.
+func (lsel internalSelector) String() string {
+	var reqs []string
+	for ix := range lsel {
+		reqs = append(reqs, lsel[ix].String())
+	}
+	return strings.Join(reqs, ",")
+}
+
+// Token represents constant definition for lexer token
+type Token int
+
+const (
+	// ErrorToken represents scan error
+	ErrorToken Token = iota
+	// EndOfString
