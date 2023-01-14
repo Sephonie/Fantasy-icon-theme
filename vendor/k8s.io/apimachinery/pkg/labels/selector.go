@@ -615,4 +615,125 @@ func (p *Parser) parseRequirement() (*Requirement, error) {
 	if err != nil {
 		return nil, err
 	}
-	if operator == selecti
+	if operator == selection.Exists || operator == selection.DoesNotExist { // operator found lookahead set checked
+		return NewRequirement(key, operator, []string{})
+	}
+	operator, err = p.parseOperator()
+	if err != nil {
+		return nil, err
+	}
+	var values sets.String
+	switch operator {
+	case selection.In, selection.NotIn:
+		values, err = p.parseValues()
+	case selection.Equals, selection.DoubleEquals, selection.NotEquals, selection.GreaterThan, selection.LessThan:
+		values, err = p.parseExactValue()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return NewRequirement(key, operator, values.List())
+
+}
+
+// parseKeyAndInferOperator parse literals.
+// in case of no operator '!, in, notin, ==, =, !=' are found
+// the 'exists' operator is inferred
+func (p *Parser) parseKeyAndInferOperator() (string, selection.Operator, error) {
+	var operator selection.Operator
+	tok, literal := p.consume(Values)
+	if tok == DoesNotExistToken {
+		operator = selection.DoesNotExist
+		tok, literal = p.consume(Values)
+	}
+	if tok != IdentifierToken {
+		err := fmt.Errorf("found '%s', expected: identifier", literal)
+		return "", "", err
+	}
+	if err := validateLabelKey(literal); err != nil {
+		return "", "", err
+	}
+	if t, _ := p.lookahead(Values); t == EndOfStringToken || t == CommaToken {
+		if operator != selection.DoesNotExist {
+			operator = selection.Exists
+		}
+	}
+	return literal, operator, nil
+}
+
+// parseOperator return operator and eventually matchType
+// matchType can be exact
+func (p *Parser) parseOperator() (op selection.Operator, err error) {
+	tok, lit := p.consume(KeyAndOperator)
+	switch tok {
+	// DoesNotExistToken shouldn't be here because it's a unary operator, not a binary operator
+	case InToken:
+		op = selection.In
+	case EqualsToken:
+		op = selection.Equals
+	case DoubleEqualsToken:
+		op = selection.DoubleEquals
+	case GreaterThanToken:
+		op = selection.GreaterThan
+	case LessThanToken:
+		op = selection.LessThan
+	case NotInToken:
+		op = selection.NotIn
+	case NotEqualsToken:
+		op = selection.NotEquals
+	default:
+		return "", fmt.Errorf("found '%s', expected: '=', '!=', '==', 'in', notin'", lit)
+	}
+	return op, nil
+}
+
+// parseValues parses the values for set based matching (x,y,z)
+func (p *Parser) parseValues() (sets.String, error) {
+	tok, lit := p.consume(Values)
+	if tok != OpenParToken {
+		return nil, fmt.Errorf("found '%s' expected: '('", lit)
+	}
+	tok, lit = p.lookahead(Values)
+	switch tok {
+	case IdentifierToken, CommaToken:
+		s, err := p.parseIdentifiersList() // handles general cases
+		if err != nil {
+			return s, err
+		}
+		if tok, _ = p.consume(Values); tok != ClosedParToken {
+			return nil, fmt.Errorf("found '%s', expected: ')'", lit)
+		}
+		return s, nil
+	case ClosedParToken: // handles "()"
+		p.consume(Values)
+		return sets.NewString(""), nil
+	default:
+		return nil, fmt.Errorf("found '%s', expected: ',', ')' or identifier", lit)
+	}
+}
+
+// parseIdentifiersList parses a (possibly empty) list of
+// of comma separated (possibly empty) identifiers
+func (p *Parser) parseIdentifiersList() (sets.String, error) {
+	s := sets.NewString()
+	for {
+		tok, lit := p.consume(Values)
+		switch tok {
+		case IdentifierToken:
+			s.Insert(lit)
+			tok2, lit2 := p.lookahead(Values)
+			switch tok2 {
+			case CommaToken:
+				continue
+			case ClosedParToken:
+				return s, nil
+			default:
+				return nil, fmt.Errorf("found '%s', expected: ',' or ')'", lit2)
+			}
+		case CommaToken: // handled here since we can have "(,"
+			if s.Len() == 0 {
+				s.Insert("") // to handle (,
+			}
+			tok2, _ := p.lookahead(Values)
+			if tok2 == ClosedParToken {
+				s.Insert(""
