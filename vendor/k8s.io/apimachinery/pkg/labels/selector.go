@@ -352,4 +352,139 @@ type Token int
 const (
 	// ErrorToken represents scan error
 	ErrorToken Token = iota
-	// EndOfString
+	// EndOfStringToken represents end of string
+	EndOfStringToken
+	// ClosedParToken represents close parenthesis
+	ClosedParToken
+	// CommaToken represents the comma
+	CommaToken
+	// DoesNotExistToken represents logic not
+	DoesNotExistToken
+	// DoubleEqualsToken represents double equals
+	DoubleEqualsToken
+	// EqualsToken represents equal
+	EqualsToken
+	// GreaterThanToken represents greater than
+	GreaterThanToken
+	// IdentifierToken represents identifier, e.g. keys and values
+	IdentifierToken
+	// InToken represents in
+	InToken
+	// LessThanToken represents less than
+	LessThanToken
+	// NotEqualsToken represents not equal
+	NotEqualsToken
+	// NotInToken represents not in
+	NotInToken
+	// OpenParToken represents open parenthesis
+	OpenParToken
+)
+
+// string2token contains the mapping between lexer Token and token literal
+// (except IdentifierToken, EndOfStringToken and ErrorToken since it makes no sense)
+var string2token = map[string]Token{
+	")":     ClosedParToken,
+	",":     CommaToken,
+	"!":     DoesNotExistToken,
+	"==":    DoubleEqualsToken,
+	"=":     EqualsToken,
+	">":     GreaterThanToken,
+	"in":    InToken,
+	"<":     LessThanToken,
+	"!=":    NotEqualsToken,
+	"notin": NotInToken,
+	"(":     OpenParToken,
+}
+
+// ScannedItem contains the Token and the literal produced by the lexer.
+type ScannedItem struct {
+	tok     Token
+	literal string
+}
+
+// isWhitespace returns true if the rune is a space, tab, or newline.
+func isWhitespace(ch byte) bool {
+	return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n'
+}
+
+// isSpecialSymbol detect if the character ch can be an operator
+func isSpecialSymbol(ch byte) bool {
+	switch ch {
+	case '=', '!', '(', ')', ',', '>', '<':
+		return true
+	}
+	return false
+}
+
+// Lexer represents the Lexer struct for label selector.
+// It contains necessary informationt to tokenize the input string
+type Lexer struct {
+	// s stores the string to be tokenized
+	s string
+	// pos is the position currently tokenized
+	pos int
+}
+
+// read return the character currently lexed
+// increment the position and check the buffer overflow
+func (l *Lexer) read() (b byte) {
+	b = 0
+	if l.pos < len(l.s) {
+		b = l.s[l.pos]
+		l.pos++
+	}
+	return b
+}
+
+// unread 'undoes' the last read character
+func (l *Lexer) unread() {
+	l.pos--
+}
+
+// scanIDOrKeyword scans string to recognize literal token (for example 'in') or an identifier.
+func (l *Lexer) scanIDOrKeyword() (tok Token, lit string) {
+	var buffer []byte
+IdentifierLoop:
+	for {
+		switch ch := l.read(); {
+		case ch == 0:
+			break IdentifierLoop
+		case isSpecialSymbol(ch) || isWhitespace(ch):
+			l.unread()
+			break IdentifierLoop
+		default:
+			buffer = append(buffer, ch)
+		}
+	}
+	s := string(buffer)
+	if val, ok := string2token[s]; ok { // is a literal token?
+		return val, s
+	}
+	return IdentifierToken, s // otherwise is an identifier
+}
+
+// scanSpecialSymbol scans string starting with special symbol.
+// special symbol identify non literal operators. "!=", "==", "="
+func (l *Lexer) scanSpecialSymbol() (Token, string) {
+	lastScannedItem := ScannedItem{}
+	var buffer []byte
+SpecialSymbolLoop:
+	for {
+		switch ch := l.read(); {
+		case ch == 0:
+			break SpecialSymbolLoop
+		case isSpecialSymbol(ch):
+			buffer = append(buffer, ch)
+			if token, ok := string2token[string(buffer)]; ok {
+				lastScannedItem = ScannedItem{tok: token, literal: string(buffer)}
+			} else if lastScannedItem.tok != 0 {
+				l.unread()
+				break SpecialSymbolLoop
+			}
+		default:
+			l.unread()
+			break SpecialSymbolLoop
+		}
+	}
+	if lastScannedItem.tok == 0 {
+		return ErrorToken, fmt.Spr
