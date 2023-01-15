@@ -827,4 +827,53 @@ func validateLabelKey(k string) error {
 
 func validateLabelValue(v string) error {
 	if errs := validation.IsValidLabelValue(v); len(errs) != 0 {
-		return fmt.Errorf("invalid label value: %q: %s
+		return fmt.Errorf("invalid label value: %q: %s", v, strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// SelectorFromSet returns a Selector which will match exactly the given Set. A
+// nil and empty Sets are considered equivalent to Everything().
+func SelectorFromSet(ls Set) Selector {
+	if ls == nil || len(ls) == 0 {
+		return internalSelector{}
+	}
+	var requirements internalSelector
+	for label, value := range ls {
+		r, err := NewRequirement(label, selection.Equals, []string{value})
+		if err == nil {
+			requirements = append(requirements, *r)
+		} else {
+			//TODO: double check errors when input comes from serialization?
+			return internalSelector{}
+		}
+	}
+	// sort to have deterministic string representation
+	sort.Sort(ByKey(requirements))
+	return requirements
+}
+
+// SelectorFromValidatedSet returns a Selector which will match exactly the given Set.
+// A nil and empty Sets are considered equivalent to Everything().
+// It assumes that Set is already validated and doesn't do any validation.
+func SelectorFromValidatedSet(ls Set) Selector {
+	if ls == nil || len(ls) == 0 {
+		return internalSelector{}
+	}
+	var requirements internalSelector
+	for label, value := range ls {
+		requirements = append(requirements, Requirement{key: label, operator: selection.Equals, strValues: []string{value}})
+	}
+	// sort to have deterministic string representation
+	sort.Sort(ByKey(requirements))
+	return requirements
+}
+
+// ParseToRequirements takes a string representing a selector and returns a list of
+// requirements. This function is suitable for those callers that perform additional
+// processing on selector requirements.
+// See the documentation for Parse() function for more details.
+// TODO: Consider exporting the internalSelector type instead.
+func ParseToRequirements(selector string) ([]Requirement, error) {
+	return parse(selector)
+}
