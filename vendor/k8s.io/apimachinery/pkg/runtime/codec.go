@@ -136,4 +136,121 @@ func (n NoopDecoder) Decode(data []byte, gvk *schema.GroupVersionKind, into Obje
 // NewParameterCodec creates a ParameterCodec capable of transforming url values into versioned objects and back.
 func NewParameterCodec(scheme *Scheme) ParameterCodec {
 	return &parameterCodec{
-		typ
+		typer:     scheme,
+		convertor: scheme,
+		creator:   scheme,
+		defaulter: scheme,
+	}
+}
+
+// parameterCodec implements conversion to and from query parameters and objects.
+type parameterCodec struct {
+	typer     ObjectTyper
+	convertor ObjectConvertor
+	creator   ObjectCreater
+	defaulter ObjectDefaulter
+}
+
+var _ ParameterCodec = &parameterCodec{}
+
+// DecodeParameters converts the provided url.Values into an object of type From with the kind of into, and then
+// converts that object to into (if necessary). Returns an error if the operation cannot be completed.
+func (c *parameterCodec) DecodeParameters(parameters url.Values, from schema.GroupVersion, into Object) error {
+	if len(parameters) == 0 {
+		return nil
+	}
+	targetGVKs, _, err := c.typer.ObjectKinds(into)
+	if err != nil {
+		return err
+	}
+	for i := range targetGVKs {
+		if targetGVKs[i].GroupVersion() == from {
+			if err := c.convertor.Convert(&parameters, into, nil); err != nil {
+				return err
+			}
+			// in the case where we going into the same object we're receiving, default on the outbound object
+			if c.defaulter != nil {
+				c.defaulter.Default(into)
+			}
+			return nil
+		}
+	}
+
+	input, err := c.creator.New(from.WithKind(targetGVKs[0].Kind))
+	if err != nil {
+		return err
+	}
+	if err := c.convertor.Convert(&parameters, input, nil); err != nil {
+		return err
+	}
+	// if we have defaulter, default the input before converting to output
+	if c.defaulter != nil {
+		c.defaulter.Default(input)
+	}
+	return c.convertor.Convert(input, into, nil)
+}
+
+// EncodeParameters converts the provided object into the to version, then converts that object to url.Values.
+// Returns an error if conversion is not possible.
+func (c *parameterCodec) EncodeParameters(obj Object, to schema.GroupVersion) (url.Values, error) {
+	gvks, _, err := c.typer.ObjectKinds(obj)
+	if err != nil {
+		return nil, err
+	}
+	gvk := gvks[0]
+	if to != gvk.GroupVersion() {
+		out, err := c.convertor.ConvertToVersion(obj, to)
+		if err != nil {
+			return nil, err
+		}
+		obj = out
+	}
+	return queryparams.Convert(obj)
+}
+
+type base64Serializer struct {
+	Encoder
+	Decoder
+}
+
+func NewBase64Serializer(e Encoder, d Decoder) Serializer {
+	return &base64Serializer{e, d}
+}
+
+func (s base64Serializer) Encode(obj Object, stream io.Writer) error {
+	e := base64.NewEncoder(base64.StdEncoding, stream)
+	err := s.Encoder.Encode(obj, e)
+	e.Close()
+	return err
+}
+
+func (s base64Serializer) Decode(data []byte, defaults *schema.GroupVersionKind, into Object) (Object, *schema.GroupVersionKind, error) {
+	out := make([]byte, base64.StdEncoding.DecodedLen(len(data)))
+	n, err := base64.StdEncoding.Decode(out, data)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.Decoder.Decode(out[:n], defaults, into)
+}
+
+// SerializerInfoForMediaType returns the first info in types that has a matching media type (which cannot
+// include media-type parameters), or the first info with an empty media type, or false if no type matches.
+func SerializerInfoForMediaType(types []SerializerInfo, mediaType string) (SerializerInfo, bool) {
+	for _, info := range types {
+		if info.MediaType == mediaType {
+			return info, true
+		}
+	}
+	for _, info := range types {
+		if len(info.MediaType) == 0 {
+			return info, true
+		}
+	}
+	return SerializerInfo{}, false
+}
+
+var (
+	// InternalGroupVersioner will always prefer the internal version for a given group version kind.
+	InternalGroupVersioner GroupVersioner = internalGroupVersioner{}
+	// DisabledGroupVersioner will reject all kinds passed to it.
+	DisabledGroupVersioner GroupVersioner = 
