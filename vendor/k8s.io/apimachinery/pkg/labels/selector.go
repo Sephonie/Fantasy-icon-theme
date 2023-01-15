@@ -736,4 +736,95 @@ func (p *Parser) parseIdentifiersList() (sets.String, error) {
 			}
 			tok2, _ := p.lookahead(Values)
 			if tok2 == ClosedParToken {
-				s.Insert(""
+				s.Insert("") // to handle ,)  Double "" removed by StringSet
+				return s, nil
+			}
+			if tok2 == CommaToken {
+				p.consume(Values)
+				s.Insert("") // to handle ,, Double "" removed by StringSet
+			}
+		default: // it can be operator
+			return s, fmt.Errorf("found '%s', expected: ',', or identifier", lit)
+		}
+	}
+}
+
+// parseExactValue parses the only value for exact match style
+func (p *Parser) parseExactValue() (sets.String, error) {
+	s := sets.NewString()
+	tok, lit := p.lookahead(Values)
+	if tok == EndOfStringToken || tok == CommaToken {
+		s.Insert("")
+		return s, nil
+	}
+	tok, lit = p.consume(Values)
+	if tok == IdentifierToken {
+		s.Insert(lit)
+		return s, nil
+	}
+	return nil, fmt.Errorf("found '%s', expected: identifier", lit)
+}
+
+// Parse takes a string representing a selector and returns a selector
+// object, or an error. This parsing function differs from ParseSelector
+// as they parse different selectors with different syntaxes.
+// The input will cause an error if it does not follow this form:
+//
+//  <selector-syntax>         ::= <requirement> | <requirement> "," <selector-syntax>
+//  <requirement>             ::= [!] KEY [ <set-based-restriction> | <exact-match-restriction> ]
+//  <set-based-restriction>   ::= "" | <inclusion-exclusion> <value-set>
+//  <inclusion-exclusion>     ::= <inclusion> | <exclusion>
+//  <exclusion>               ::= "notin"
+//  <inclusion>               ::= "in"
+//  <value-set>               ::= "(" <values> ")"
+//  <values>                  ::= VALUE | VALUE "," <values>
+//  <exact-match-restriction> ::= ["="|"=="|"!="] VALUE
+//
+// KEY is a sequence of one or more characters following [ DNS_SUBDOMAIN "/" ] DNS_LABEL. Max length is 63 characters.
+// VALUE is a sequence of zero or more characters "([A-Za-z0-9_-\.])". Max length is 63 characters.
+// Delimiter is white space: (' ', '\t')
+// Example of valid syntax:
+//  "x in (foo,,baz),y,z notin ()"
+//
+// Note:
+//  (1) Inclusion - " in " - denotes that the KEY exists and is equal to any of the
+//      VALUEs in its requirement
+//  (2) Exclusion - " notin " - denotes that the KEY is not equal to any
+//      of the VALUEs in its requirement or does not exist
+//  (3) The empty string is a valid VALUE
+//  (4) A requirement with just a KEY - as in "y" above - denotes that
+//      the KEY exists and can be any VALUE.
+//  (5) A requirement with just !KEY requires that the KEY not exist.
+//
+func Parse(selector string) (Selector, error) {
+	parsedSelector, err := parse(selector)
+	if err == nil {
+		return parsedSelector, nil
+	}
+	return nil, err
+}
+
+// parse parses the string representation of the selector and returns the internalSelector struct.
+// The callers of this method can then decide how to return the internalSelector struct to their
+// callers. This function has two callers now, one returns a Selector interface and the other
+// returns a list of requirements.
+func parse(selector string) (internalSelector, error) {
+	p := &Parser{l: &Lexer{s: selector, pos: 0}}
+	items, err := p.parse()
+	if err != nil {
+		return nil, err
+	}
+	sort.Sort(ByKey(items)) // sort to grant determistic parsing
+	return internalSelector(items), err
+}
+
+func validateLabelKey(k string) error {
+	if errs := validation.IsQualifiedName(k); len(errs) != 0 {
+		return fmt.Errorf("invalid label key %q: %s", k, strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func validateLabelValue(v string) error {
+	if errs := validation.IsValidLabelValue(v); len(errs) != 0 {
+		return fmt.Errorf("invalid label value: %q: %s
