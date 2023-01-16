@@ -188,4 +188,133 @@ func fromUnstructured(sv, dv reflect.Value) error {
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 				switch dt.Kind() {
-				case reflect.Int, reflect.Int8, reflect.I
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+					dv.Set(sv.Convert(dt))
+					return nil
+				}
+			case reflect.Float32, reflect.Float64:
+				switch dt.Kind() {
+				case reflect.Float32, reflect.Float64:
+					dv.Set(sv.Convert(dt))
+					return nil
+				}
+				if sv.Float() == math.Trunc(sv.Float()) {
+					dv.Set(sv.Convert(dt))
+					return nil
+				}
+			}
+			return fmt.Errorf("cannot convert %s to %s", st.String(), dt.String())
+		}
+	}
+
+	// Check if the object has a custom JSON marshaller/unmarshaller.
+	if reflect.PtrTo(dt).Implements(unmarshalerType) {
+		data, err := json.Marshal(sv.Interface())
+		if err != nil {
+			return fmt.Errorf("error encoding %s to json: %v", st.String(), err)
+		}
+		unmarshaler := dv.Addr().Interface().(encodingjson.Unmarshaler)
+		return unmarshaler.UnmarshalJSON(data)
+	}
+
+	switch dt.Kind() {
+	case reflect.Map:
+		return mapFromUnstructured(sv, dv)
+	case reflect.Slice:
+		return sliceFromUnstructured(sv, dv)
+	case reflect.Ptr:
+		return pointerFromUnstructured(sv, dv)
+	case reflect.Struct:
+		return structFromUnstructured(sv, dv)
+	case reflect.Interface:
+		return interfaceFromUnstructured(sv, dv)
+	default:
+		return fmt.Errorf("unrecognized type: %v", dt.Kind())
+	}
+}
+
+func fieldInfoFromField(structType reflect.Type, field int) *fieldInfo {
+	fieldCacheMap := fieldCache.value.Load().(fieldsCacheMap)
+	if info, ok := fieldCacheMap[structField{structType, field}]; ok {
+		return info
+	}
+
+	// Cache miss - we need to compute the field name.
+	info := &fieldInfo{}
+	typeField := structType.Field(field)
+	jsonTag := typeField.Tag.Get("json")
+	if len(jsonTag) == 0 {
+		// Make the first character lowercase.
+		if typeField.Name == "" {
+			info.name = typeField.Name
+		} else {
+			info.name = strings.ToLower(typeField.Name[:1]) + typeField.Name[1:]
+		}
+	} else {
+		items := strings.Split(jsonTag, ",")
+		info.name = items[0]
+		for i := range items {
+			if items[i] == "omitempty" {
+				info.omitempty = true
+			}
+		}
+	}
+	info.nameValue = reflect.ValueOf(info.name)
+
+	fieldCache.Lock()
+	defer fieldCache.Unlock()
+	fieldCacheMap = fieldCache.value.Load().(fieldsCacheMap)
+	newFieldCacheMap := make(fieldsCacheMap)
+	for k, v := range fieldCacheMap {
+		newFieldCacheMap[k] = v
+	}
+	newFieldCacheMap[structField{structType, field}] = info
+	fieldCache.value.Store(newFieldCacheMap)
+	return info
+}
+
+func unwrapInterface(v reflect.Value) reflect.Value {
+	for v.Kind() == reflect.Interface {
+		v = v.Elem()
+	}
+	return v
+}
+
+func mapFromUnstructured(sv, dv reflect.Value) error {
+	st, dt := sv.Type(), dv.Type()
+	if st.Kind() != reflect.Map {
+		return fmt.Errorf("cannot restore map from %v", st.Kind())
+	}
+
+	if !st.Key().AssignableTo(dt.Key()) && !st.Key().ConvertibleTo(dt.Key()) {
+		return fmt.Errorf("cannot copy map with non-assignable keys: %v %v", st.Key(), dt.Key())
+	}
+
+	if sv.IsNil() {
+		dv.Set(reflect.Zero(dt))
+		return nil
+	}
+	dv.Set(reflect.MakeMap(dt))
+	for _, key := range sv.MapKeys() {
+		value := reflect.New(dt.Elem()).Elem()
+		if val := unwrapInterface(sv.MapIndex(key)); val.IsValid() {
+			if err := fromUnstructured(val, value); err != nil {
+				return err
+			}
+		} else {
+			value.Set(reflect.Zero(dt.Elem()))
+		}
+		if st.Key().AssignableTo(dt.Key()) {
+			dv.SetMapIndex(key, value)
+		} else {
+			dv.SetMapIndex(key.Convert(dt.Key()), value)
+		}
+	}
+	return nil
+}
+
+func sliceFromUnstructured(sv, dv reflect.Value) error {
+	st, dt := sv.Type(), dv.Type()
+	if st.Kind() == reflect.String && dt.Elem().Kind() == reflect.Uint8 {
+		// We store original []byte representation as s
