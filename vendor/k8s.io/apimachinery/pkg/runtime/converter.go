@@ -317,4 +317,127 @@ func mapFromUnstructured(sv, dv reflect.Value) error {
 func sliceFromUnstructured(sv, dv reflect.Value) error {
 	st, dt := sv.Type(), dv.Type()
 	if st.Kind() == reflect.String && dt.Elem().Kind() == reflect.Uint8 {
-		// We store original []byte representation as s
+		// We store original []byte representation as string.
+		// This conversion is allowed, but we need to be careful about
+		// marshaling data appropriately.
+		if len(sv.Interface().(string)) > 0 {
+			marshalled, err := json.Marshal(sv.Interface())
+			if err != nil {
+				return fmt.Errorf("error encoding %s to json: %v", st, err)
+			}
+			// TODO: Is this Unmarshal needed?
+			var data []byte
+			err = json.Unmarshal(marshalled, &data)
+			if err != nil {
+				return fmt.Errorf("error decoding from json: %v", err)
+			}
+			dv.SetBytes(data)
+		} else {
+			dv.Set(reflect.Zero(dt))
+		}
+		return nil
+	}
+	if st.Kind() != reflect.Slice {
+		return fmt.Errorf("cannot restore slice from %v", st.Kind())
+	}
+
+	if sv.IsNil() {
+		dv.Set(reflect.Zero(dt))
+		return nil
+	}
+	dv.Set(reflect.MakeSlice(dt, sv.Len(), sv.Cap()))
+	for i := 0; i < sv.Len(); i++ {
+		if err := fromUnstructured(sv.Index(i), dv.Index(i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pointerFromUnstructured(sv, dv reflect.Value) error {
+	st, dt := sv.Type(), dv.Type()
+
+	if st.Kind() == reflect.Ptr && sv.IsNil() {
+		dv.Set(reflect.Zero(dt))
+		return nil
+	}
+	dv.Set(reflect.New(dt.Elem()))
+	switch st.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		return fromUnstructured(sv.Elem(), dv.Elem())
+	default:
+		return fromUnstructured(sv, dv.Elem())
+	}
+}
+
+func structFromUnstructured(sv, dv reflect.Value) error {
+	st, dt := sv.Type(), dv.Type()
+	if st.Kind() != reflect.Map {
+		return fmt.Errorf("cannot restore struct from: %v", st.Kind())
+	}
+
+	for i := 0; i < dt.NumField(); i++ {
+		fieldInfo := fieldInfoFromField(dt, i)
+		fv := dv.Field(i)
+
+		if len(fieldInfo.name) == 0 {
+			// This field is inlined.
+			if err := fromUnstructured(sv, fv); err != nil {
+				return err
+			}
+		} else {
+			value := unwrapInterface(sv.MapIndex(fieldInfo.nameValue))
+			if value.IsValid() {
+				if err := fromUnstructured(value, fv); err != nil {
+					return err
+				}
+			} else {
+				fv.Set(reflect.Zero(fv.Type()))
+			}
+		}
+	}
+	return nil
+}
+
+func interfaceFromUnstructured(sv, dv reflect.Value) error {
+	// TODO: Is this conversion safe?
+	dv.Set(sv)
+	return nil
+}
+
+// ToUnstructured converts an object into map[string]interface{} representation.
+// It uses encoding/json/Marshaler if object implements it or reflection if not.
+func (c *unstructuredConverter) ToUnstructured(obj interface{}) (map[string]interface{}, error) {
+	var u map[string]interface{}
+	var err error
+	if unstr, ok := obj.(Unstructured); ok {
+		// UnstructuredContent() mutates the object so we need to make a copy first
+		u = unstr.DeepCopyObject().(Unstructured).UnstructuredContent()
+	} else {
+		t := reflect.TypeOf(obj)
+		value := reflect.ValueOf(obj)
+		if t.Kind() != reflect.Ptr || value.IsNil() {
+			return nil, fmt.Errorf("ToUnstructured requires a non-nil pointer to an object, got %v", t)
+		}
+		u = map[string]interface{}{}
+		err = toUnstructured(value.Elem(), reflect.ValueOf(&u).Elem())
+	}
+	if c.mismatchDetection {
+		newUnstr := map[string]interface{}{}
+		newErr := toUnstructuredViaJSON(obj, &newUnstr)
+		if (err != nil) != (newErr != nil) {
+			glog.Fatalf("ToUnstructured unexpected error for %v: error: %v; newErr: %v", obj, err, newErr)
+		}
+		if err == nil && !c.comparison.DeepEqual(u, newUnstr) {
+			glog.Fatalf("ToUnstructured mismatch\nobj1: %#v\nobj2: %#v", u, newUnstr)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// DeepCopyJSON deep copies the passed value, assuming it is a valid JSON representation i.e. only contains
+// types produced by json.Unmarshal().
+func DeepCopyJSON(x map[string]interface{}) ma
