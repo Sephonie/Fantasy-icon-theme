@@ -681,4 +681,113 @@ func sliceToUnstructured(sv, dv reflect.Value) error {
 		// However, it is panicing in the following form.
 		// case reflect.String, reflect.Bool,
 		// 	reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		// 	reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, refle
+		// 	reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		// 	sv.Set(sv)
+		// 	return nil
+		default:
+			// We need to do a proper conversion.
+			dv.Set(reflect.MakeSlice(reflect.SliceOf(dt), sv.Len(), sv.Cap()))
+			dv = dv.Elem()
+			dt = dv.Type()
+		}
+	}
+	if dt.Kind() != reflect.Slice {
+		return fmt.Errorf("cannot convert slice to: %v", dt.Kind())
+	}
+	for i := 0; i < sv.Len(); i++ {
+		if err := toUnstructured(sv.Index(i), dv.Index(i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pointerToUnstructured(sv, dv reflect.Value) error {
+	if sv.IsNil() {
+		// We're done - we don't need to store anything.
+		return nil
+	}
+	return toUnstructured(sv.Elem(), dv)
+}
+
+func isZero(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Array, reflect.String:
+		return v.Len() == 0
+	case reflect.Bool:
+		return !v.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return v.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() == 0
+	case reflect.Map, reflect.Slice:
+		// TODO: It seems that 0-len maps are ignored in it.
+		return v.IsNil() || v.Len() == 0
+	case reflect.Ptr, reflect.Interface:
+		return v.IsNil()
+	}
+	return false
+}
+
+func structToUnstructured(sv, dv reflect.Value) error {
+	st, dt := sv.Type(), dv.Type()
+	if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
+		dv.Set(reflect.MakeMap(mapStringInterfaceType))
+		dv = dv.Elem()
+		dt = dv.Type()
+	}
+	if dt.Kind() != reflect.Map {
+		return fmt.Errorf("cannot convert struct to: %v", dt.Kind())
+	}
+	realMap := dv.Interface().(map[string]interface{})
+
+	for i := 0; i < st.NumField(); i++ {
+		fieldInfo := fieldInfoFromField(st, i)
+		fv := sv.Field(i)
+
+		if fieldInfo.name == "-" {
+			// This field should be skipped.
+			continue
+		}
+		if fieldInfo.omitempty && isZero(fv) {
+			// omitempty fields should be ignored.
+			continue
+		}
+		if len(fieldInfo.name) == 0 {
+			// This field is inlined.
+			if err := toUnstructured(fv, dv); err != nil {
+				return err
+			}
+			continue
+		}
+		switch fv.Type().Kind() {
+		case reflect.String:
+			realMap[fieldInfo.name] = fv.String()
+		case reflect.Bool:
+			realMap[fieldInfo.name] = fv.Bool()
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			realMap[fieldInfo.name] = fv.Int()
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			realMap[fieldInfo.name] = fv.Uint()
+		case reflect.Float32, reflect.Float64:
+			realMap[fieldInfo.name] = fv.Float()
+		default:
+			subv := reflect.New(dt.Elem()).Elem()
+			if err := toUnstructured(fv, subv); err != nil {
+				return err
+			}
+			dv.SetMapIndex(fieldInfo.nameValue, subv)
+		}
+	}
+	return nil
+}
+
+func interfaceToUnstructured(sv, dv reflect.Value) error {
+	if !sv.IsValid() || sv.IsNil() {
+		dv.Set(reflect.Zero(dv.Type()))
+		return nil
+	}
+	return toUnstructured(sv.Elem(), dv)
+}
