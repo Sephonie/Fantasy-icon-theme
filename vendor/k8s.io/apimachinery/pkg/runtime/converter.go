@@ -569,4 +569,116 @@ func toUnstructured(sv, dv reflect.Value) error {
 		if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
 			dv.Set(reflect.New(stringType))
 		}
-		dv.
+		dv.Set(reflect.ValueOf(sv.String()))
+		return nil
+	case reflect.Bool:
+		if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
+			dv.Set(reflect.New(boolType))
+		}
+		dv.Set(reflect.ValueOf(sv.Bool()))
+		return nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
+			dv.Set(reflect.New(int64Type))
+		}
+		dv.Set(reflect.ValueOf(sv.Int()))
+		return nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
+			dv.Set(reflect.New(uint64Type))
+		}
+		dv.Set(reflect.ValueOf(sv.Uint()))
+		return nil
+	case reflect.Float32, reflect.Float64:
+		if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
+			dv.Set(reflect.New(float64Type))
+		}
+		dv.Set(reflect.ValueOf(sv.Float()))
+		return nil
+	case reflect.Map:
+		return mapToUnstructured(sv, dv)
+	case reflect.Slice:
+		return sliceToUnstructured(sv, dv)
+	case reflect.Ptr:
+		return pointerToUnstructured(sv, dv)
+	case reflect.Struct:
+		return structToUnstructured(sv, dv)
+	case reflect.Interface:
+		return interfaceToUnstructured(sv, dv)
+	default:
+		return fmt.Errorf("unrecognized type: %v", st.Kind())
+	}
+}
+
+func mapToUnstructured(sv, dv reflect.Value) error {
+	st, dt := sv.Type(), dv.Type()
+	if sv.IsNil() {
+		dv.Set(reflect.Zero(dt))
+		return nil
+	}
+	if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
+		if st.Key().Kind() == reflect.String {
+			switch st.Elem().Kind() {
+			// TODO It should be possible to reuse the slice for primitive types.
+			// However, it is panicing in the following form.
+			// case reflect.String, reflect.Bool,
+			// 	reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			// 	reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			// 	sv.Set(sv)
+			// 	return nil
+			default:
+				// We need to do a proper conversion.
+			}
+		}
+		dv.Set(reflect.MakeMap(mapStringInterfaceType))
+		dv = dv.Elem()
+		dt = dv.Type()
+	}
+	if dt.Kind() != reflect.Map {
+		return fmt.Errorf("cannot convert struct to: %v", dt.Kind())
+	}
+
+	if !st.Key().AssignableTo(dt.Key()) && !st.Key().ConvertibleTo(dt.Key()) {
+		return fmt.Errorf("cannot copy map with non-assignable keys: %v %v", st.Key(), dt.Key())
+	}
+
+	for _, key := range sv.MapKeys() {
+		value := reflect.New(dt.Elem()).Elem()
+		if err := toUnstructured(sv.MapIndex(key), value); err != nil {
+			return err
+		}
+		if st.Key().AssignableTo(dt.Key()) {
+			dv.SetMapIndex(key, value)
+		} else {
+			dv.SetMapIndex(key.Convert(dt.Key()), value)
+		}
+	}
+	return nil
+}
+
+func sliceToUnstructured(sv, dv reflect.Value) error {
+	st, dt := sv.Type(), dv.Type()
+	if sv.IsNil() {
+		dv.Set(reflect.Zero(dt))
+		return nil
+	}
+	if st.Elem().Kind() == reflect.Uint8 {
+		dv.Set(reflect.New(stringType))
+		data, err := json.Marshal(sv.Bytes())
+		if err != nil {
+			return err
+		}
+		var result string
+		if err = json.Unmarshal(data, &result); err != nil {
+			return err
+		}
+		dv.Set(reflect.ValueOf(result))
+		return nil
+	}
+	if dt.Kind() == reflect.Interface && dv.NumMethod() == 0 {
+		switch st.Elem().Kind() {
+		// TODO It should be possible to reuse the slice for primitive types.
+		// However, it is panicing in the following form.
+		// case reflect.String, reflect.Bool,
+		// 	reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		// 	reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, refle
