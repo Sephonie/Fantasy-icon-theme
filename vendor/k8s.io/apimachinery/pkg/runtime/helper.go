@@ -209,4 +209,4 @@ var DefaultFramer = defaultFramer{}
 type defaultFramer struct{}
 
 func (defaultFramer) NewFrameReader(r io.ReadCloser) io.ReadCloser { return r }
-func (defaultFramer) NewFrameWriter(w io.Writer) io.Writer         {
+func (defaultFramer) NewFrameWriter(w io.Writer) io.Writer         { return w }
