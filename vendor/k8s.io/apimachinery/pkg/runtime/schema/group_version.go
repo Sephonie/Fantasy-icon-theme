@@ -262,3 +262,17 @@ func bestMatch(kinds []GroupVersionKind, targets []GroupVersionKind) GroupVersio
 func (gvk *GroupVersionKind) ToAPIVersionAndKind() (string, string) {
 	if gvk == nil {
 		return "", ""
+	}
+	return gvk.GroupVersion().String(), gvk.Kind
+}
+
+// FromAPIVersionAndKind returns a GVK representing the provided fields for types that
+// do not use TypeMeta. This method exists to support test types and legacy serializations
+// that have a distinct group and kind.
+// TODO: further reduce usage of this method.
+func FromAPIVersionAndKind(apiVersion, kind string) GroupVersionKind {
+	if gv, err := ParseGroupVersion(apiVersion); err == nil {
+		return GroupVersionKind{Group: gv.Group, Version: gv.Version, Kind: kind}
+	}
+	return GroupVersionKind{Kind: kind}
+}
