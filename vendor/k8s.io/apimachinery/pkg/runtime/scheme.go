@@ -45,4 +45,93 @@ type Scheme struct {
 	// the given version and name.
 	gvkToType map[schema.GroupVersionKind]reflect.Type
 
-	// typeToGroupVersion allows one to find metadata for a given go ob
+	// typeToGroupVersion allows one to find metadata for a given go object.
+	// The reflect.Type we index by should *not* be a pointer.
+	typeToGVK map[reflect.Type][]schema.GroupVersionKind
+
+	// unversionedTypes are transformed without conversion in ConvertToVersion.
+	unversionedTypes map[reflect.Type]schema.GroupVersionKind
+
+	// unversionedKinds are the names of kinds that can be created in the context of any group
+	// or version
+	// TODO: resolve the status of unversioned types.
+	unversionedKinds map[string]reflect.Type
+
+	// Map from version and resource to the corresponding func to convert
+	// resource field labels in that version to internal version.
+	fieldLabelConversionFuncs map[string]map[string]FieldLabelConversionFunc
+
+	// defaulterFuncs is an array of interfaces to be called with an object to provide defaulting
+	// the provided object must be a pointer.
+	defaulterFuncs map[reflect.Type]func(interface{})
+
+	// converter stores all registered conversion functions. It also has
+	// default coverting behavior.
+	converter *conversion.Converter
+}
+
+// Function to convert a field selector to internal representation.
+type FieldLabelConversionFunc func(label, value string) (internalLabel, internalValue string, err error)
+
+// NewScheme creates a new Scheme. This scheme is pluggable by default.
+func NewScheme() *Scheme {
+	s := &Scheme{
+		gvkToType:                 map[schema.GroupVersionKind]reflect.Type{},
+		typeToGVK:                 map[reflect.Type][]schema.GroupVersionKind{},
+		unversionedTypes:          map[reflect.Type]schema.GroupVersionKind{},
+		unversionedKinds:          map[string]reflect.Type{},
+		fieldLabelConversionFuncs: map[string]map[string]FieldLabelConversionFunc{},
+		defaulterFuncs:            map[reflect.Type]func(interface{}){},
+	}
+	s.converter = conversion.NewConverter(s.nameFunc)
+
+	s.AddConversionFuncs(DefaultEmbeddedConversions()...)
+
+	// Enable map[string][]string conversions by default
+	if err := s.AddConversionFuncs(DefaultStringConversions...); err != nil {
+		panic(err)
+	}
+	if err := s.RegisterInputDefaults(&map[string][]string{}, JSONKeyMapper, conversion.AllowDifferentFieldTypeNames|conversion.IgnoreMissingFields); err != nil {
+		panic(err)
+	}
+	if err := s.RegisterInputDefaults(&url.Values{}, JSONKeyMapper, conversion.AllowDifferentFieldTypeNames|conversion.IgnoreMissingFields); err != nil {
+		panic(err)
+	}
+	return s
+}
+
+// nameFunc returns the name of the type that we wish to use to determine when two types attempt
+// a conversion. Defaults to the go name of the type if the type is not registered.
+func (s *Scheme) nameFunc(t reflect.Type) string {
+	// find the preferred names for this type
+	gvks, ok := s.typeToGVK[t]
+	if !ok {
+		return t.Name()
+	}
+
+	for _, gvk := range gvks {
+		internalGV := gvk.GroupVersion()
+		internalGV.Version = "__internal" // this is hacky and maybe should be passed in
+		internalGVK := internalGV.WithKind(gvk.Kind)
+
+		if internalType, exists := s.gvkToType[internalGVK]; exists {
+			return s.typeToGVK[internalType][0].Kind
+		}
+	}
+
+	return gvks[0].Kind
+}
+
+// fromScope gets the input version, desired output version, and desired Scheme
+// from a conversion.Scope.
+func (s *Scheme) fromScope(scope conversion.Scope) *Scheme {
+	return s
+}
+
+// Converter allows access to the converter for the scheme
+func (s *Scheme) Converter() *conversion.Converter {
+	return s.converter
+}
+
+// AddUnversionedTypes registers the provided types as "unversioned", which means that they follow special rules.
+// Whenever an object of this type is serialized, it is serialized with the pro
