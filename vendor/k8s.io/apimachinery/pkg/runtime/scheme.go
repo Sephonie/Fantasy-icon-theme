@@ -134,4 +134,90 @@ func (s *Scheme) Converter() *conversion.Converter {
 }
 
 // AddUnversionedTypes registers the provided types as "unversioned", which means that they follow special rules.
-// Whenever an object of this type is serialized, it is serialized with the pro
+// Whenever an object of this type is serialized, it is serialized with the provided group version and is not
+// converted. Thus unversioned objects are expected to remain backwards compatible forever, as if they were in an
+// API group and version that would never be updated.
+//
+// TODO: there is discussion about removing unversioned and replacing it with objects that are manifest into
+//   every version with particular schemas. Resolve this method at that point.
+func (s *Scheme) AddUnversionedTypes(version schema.GroupVersion, types ...Object) {
+	s.AddKnownTypes(version, types...)
+	for _, obj := range types {
+		t := reflect.TypeOf(obj).Elem()
+		gvk := version.WithKind(t.Name())
+		s.unversionedTypes[t] = gvk
+		if old, ok := s.unversionedKinds[gvk.Kind]; ok && t != old {
+			panic(fmt.Sprintf("%v.%v has already been registered as unversioned kind %q - kind name must be unique", old.PkgPath(), old.Name(), gvk))
+		}
+		s.unversionedKinds[gvk.Kind] = t
+	}
+}
+
+// AddKnownTypes registers all types passed in 'types' as being members of version 'version'.
+// All objects passed to types should be pointers to structs. The name that go reports for
+// the struct becomes the "kind" field when encoding. Version may not be empty - use the
+// APIVersionInternal constant if you have a type that does not have a formal version.
+func (s *Scheme) AddKnownTypes(gv schema.GroupVersion, types ...Object) {
+	for _, obj := range types {
+		t := reflect.TypeOf(obj)
+		if t.Kind() != reflect.Ptr {
+			panic("All types must be pointers to structs.")
+		}
+		t = t.Elem()
+		s.AddKnownTypeWithName(gv.WithKind(t.Name()), obj)
+	}
+}
+
+// AddKnownTypeWithName is like AddKnownTypes, but it lets you specify what this type should
+// be encoded as. Useful for testing when you don't want to make multiple packages to define
+// your structs. Version may not be empty - use the APIVersionInternal constant if you have a
+// type that does not have a formal version.
+func (s *Scheme) AddKnownTypeWithName(gvk schema.GroupVersionKind, obj Object) {
+	t := reflect.TypeOf(obj)
+	if len(gvk.Version) == 0 {
+		panic(fmt.Sprintf("version is required on all types: %s %v", gvk, t))
+	}
+	if t.Kind() != reflect.Ptr {
+		panic("All types must be pointers to structs.")
+	}
+	t = t.Elem()
+	if t.Kind() != reflect.Struct {
+		panic("All types must be pointers to structs.")
+	}
+
+	if oldT, found := s.gvkToType[gvk]; found && oldT != t {
+		panic(fmt.Sprintf("Double registration of different types for %v: old=%v.%v, new=%v.%v", gvk, oldT.PkgPath(), oldT.Name(), t.PkgPath(), t.Name()))
+	}
+
+	s.gvkToType[gvk] = t
+
+	for _, existingGvk := range s.typeToGVK[t] {
+		if existingGvk == gvk {
+			return
+		}
+	}
+	s.typeToGVK[t] = append(s.typeToGVK[t], gvk)
+}
+
+// KnownTypes returns the types known for the given version.
+func (s *Scheme) KnownTypes(gv schema.GroupVersion) map[string]reflect.Type {
+	types := make(map[string]reflect.Type)
+	for gvk, t := range s.gvkToType {
+		if gv != gvk.GroupVersion() {
+			continue
+		}
+
+		types[gvk.Kind] = t
+	}
+	return types
+}
+
+// AllKnownTypes returns the all known types.
+func (s *Scheme) AllKnownTypes() map[schema.GroupVersionKind]reflect.Type {
+	return s.gvkToType
+}
+
+// ObjectKinds returns all possible group,version,kind of the go object, true if the
+// object is considered unversioned, or an error if it's not a pointer or is unregistered.
+func (s *Scheme) ObjectKinds(obj Object) ([]schema.GroupVersionKind, bool, error) {
+	// Unstructured objects are always considered to have their d
