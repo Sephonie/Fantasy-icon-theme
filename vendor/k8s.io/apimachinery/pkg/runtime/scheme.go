@@ -220,4 +220,105 @@ func (s *Scheme) AllKnownTypes() map[schema.GroupVersionKind]reflect.Type {
 // ObjectKinds returns all possible group,version,kind of the go object, true if the
 // object is considered unversioned, or an error if it's not a pointer or is unregistered.
 func (s *Scheme) ObjectKinds(obj Object) ([]schema.GroupVersionKind, bool, error) {
-	// Unstructured objects are always considered to have their d
+	// Unstructured objects are always considered to have their declared GVK
+	if _, ok := obj.(Unstructured); ok {
+		// we require that the GVK be populated in order to recognize the object
+		gvk := obj.GetObjectKind().GroupVersionKind()
+		if len(gvk.Kind) == 0 {
+			return nil, false, NewMissingKindErr("unstructured object has no kind")
+		}
+		if len(gvk.Version) == 0 {
+			return nil, false, NewMissingVersionErr("unstructured object has no version")
+		}
+		return []schema.GroupVersionKind{gvk}, false, nil
+	}
+
+	v, err := conversion.EnforcePtr(obj)
+	if err != nil {
+		return nil, false, err
+	}
+	t := v.Type()
+
+	gvks, ok := s.typeToGVK[t]
+	if !ok {
+		return nil, false, NewNotRegisteredErrForType(t)
+	}
+	_, unversionedType := s.unversionedTypes[t]
+
+	return gvks, unversionedType, nil
+}
+
+// Recognizes returns true if the scheme is able to handle the provided group,version,kind
+// of an object.
+func (s *Scheme) Recognizes(gvk schema.GroupVersionKind) bool {
+	_, exists := s.gvkToType[gvk]
+	return exists
+}
+
+func (s *Scheme) IsUnversioned(obj Object) (bool, bool) {
+	v, err := conversion.EnforcePtr(obj)
+	if err != nil {
+		return false, false
+	}
+	t := v.Type()
+
+	if _, ok := s.typeToGVK[t]; !ok {
+		return false, false
+	}
+	_, ok := s.unversionedTypes[t]
+	return ok, true
+}
+
+// New returns a new API object of the given version and name, or an error if it hasn't
+// been registered. The version and kind fields must be specified.
+func (s *Scheme) New(kind schema.GroupVersionKind) (Object, error) {
+	if t, exists := s.gvkToType[kind]; exists {
+		return reflect.New(t).Interface().(Object), nil
+	}
+
+	if t, exists := s.unversionedKinds[kind.Kind]; exists {
+		return reflect.New(t).Interface().(Object), nil
+	}
+	return nil, NewNotRegisteredErrForKind(kind)
+}
+
+// AddGenericConversionFunc adds a function that accepts the ConversionFunc call pattern
+// (for two conversion types) to the converter. These functions are checked first during
+// a normal conversion, but are otherwise not called. Use AddConversionFuncs when registering
+// typed conversions.
+func (s *Scheme) AddGenericConversionFunc(fn conversion.GenericConversionFunc) {
+	s.converter.AddGenericConversionFunc(fn)
+}
+
+// Log sets a logger on the scheme. For test purposes only
+func (s *Scheme) Log(l conversion.DebugLogger) {
+	s.converter.Debug = l
+}
+
+// AddIgnoredConversionType identifies a pair of types that should be skipped by
+// conversion (because the data inside them is explicitly dropped during
+// conversion).
+func (s *Scheme) AddIgnoredConversionType(from, to interface{}) error {
+	return s.converter.RegisterIgnoredConversion(from, to)
+}
+
+// AddConversionFuncs adds functions to the list of conversion functions. The given
+// functions should know how to convert between two of your API objects, or their
+// sub-objects. We deduce how to call these functions from the types of their two
+// parameters; see the comment for Converter.Register.
+//
+// Note that, if you need to copy sub-objects that didn't change, you can use the
+// conversion.Scope object that will be passed to your conversion function.
+// Additionally, all conversions started by Scheme will set the SrcVersion and
+// DestVersion fields on the Meta object. Example:
+//
+// s.AddConversionFuncs(
+//	func(in *InternalObject, out *ExternalObject, scope conversion.Scope) error {
+//		// You can depend on Meta() being non-nil, and this being set to
+//		// the source version, e.g., ""
+//		s.Meta().SrcVersion
+//		// You can depend on this being set to the destination version,
+//		// e.g., "v1".
+//		s.Meta().DestVersion
+//		// Call scope.Convert to copy sub-fields.
+//		s.
