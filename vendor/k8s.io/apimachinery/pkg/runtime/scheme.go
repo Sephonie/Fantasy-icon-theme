@@ -492,4 +492,112 @@ func (s *Scheme) ConvertToVersion(in Object, target GroupVersioner) (Object, err
 }
 
 // UnsafeConvertToVersion will convert in to the provided target if such a conversion is possible,
-// but does not guarantee the output object does not share field
+// but does not guarantee the output object does not share fields with the input object. It attempts to be as
+// efficient as possible when doing conversion.
+func (s *Scheme) UnsafeConvertToVersion(in Object, target GroupVersioner) (Object, error) {
+	return s.convertToVersion(false, in, target)
+}
+
+// convertToVersion handles conversion with an optional copy.
+func (s *Scheme) convertToVersion(copy bool, in Object, target GroupVersioner) (Object, error) {
+	var t reflect.Type
+
+	if u, ok := in.(Unstructured); ok {
+		typed, err := s.unstructuredToTyped(u)
+		if err != nil {
+			return nil, err
+		}
+
+		in = typed
+		// unstructuredToTyped returns an Object, which must be a pointer to a struct.
+		t = reflect.TypeOf(in).Elem()
+
+	} else {
+		// determine the incoming kinds with as few allocations as possible.
+		t = reflect.TypeOf(in)
+		if t.Kind() != reflect.Ptr {
+			return nil, fmt.Errorf("only pointer types may be converted: %v", t)
+		}
+		t = t.Elem()
+		if t.Kind() != reflect.Struct {
+			return nil, fmt.Errorf("only pointers to struct types may be converted: %v", t)
+		}
+	}
+
+	kinds, ok := s.typeToGVK[t]
+	if !ok || len(kinds) == 0 {
+		return nil, NewNotRegisteredErrForType(t)
+	}
+
+	gvk, ok := target.KindForGroupVersionKinds(kinds)
+	if !ok {
+		// try to see if this type is listed as unversioned (for legacy support)
+		// TODO: when we move to server API versions, we should completely remove the unversioned concept
+		if unversionedKind, ok := s.unversionedTypes[t]; ok {
+			if gvk, ok := target.KindForGroupVersionKinds([]schema.GroupVersionKind{unversionedKind}); ok {
+				return copyAndSetTargetKind(copy, in, gvk)
+			}
+			return copyAndSetTargetKind(copy, in, unversionedKind)
+		}
+		return nil, NewNotRegisteredErrForTarget(t, target)
+	}
+
+	// target wants to use the existing type, set kind and return (no conversion necessary)
+	for _, kind := range kinds {
+		if gvk == kind {
+			return copyAndSetTargetKind(copy, in, gvk)
+		}
+	}
+
+	// type is unversioned, no conversion necessary
+	if unversionedKind, ok := s.unversionedTypes[t]; ok {
+		if gvk, ok := target.KindForGroupVersionKinds([]schema.GroupVersionKind{unversionedKind}); ok {
+			return copyAndSetTargetKind(copy, in, gvk)
+		}
+		return copyAndSetTargetKind(copy, in, unversionedKind)
+	}
+
+	out, err := s.New(gvk)
+	if err != nil {
+		return nil, err
+	}
+
+	if copy {
+		in = in.DeepCopyObject()
+	}
+
+	flags, meta := s.generateConvertMeta(in)
+	meta.Context = target
+	if err := s.converter.Convert(in, out, flags, meta); err != nil {
+		return nil, err
+	}
+
+	setTargetKind(out, gvk)
+	return out, nil
+}
+
+// unstructuredToTyped attempts to transform an unstructured object to a typed
+// object if possible. It will return an error if conversion is not possible, or the versioned
+// Go form of the object. Note that this conversion will lose fields.
+func (s *Scheme) unstructuredToTyped(in Unstructured) (Object, error) {
+	// the type must be something we recognize
+	gvks, _, err := s.ObjectKinds(in)
+	if err != nil {
+		return nil, err
+	}
+	typed, err := s.New(gvks[0])
+	if err != nil {
+		return nil, err
+	}
+	if err := DefaultUnstructuredConverter.FromUnstructured(in.UnstructuredContent(), typed); err != nil {
+		return nil, fmt.Errorf("unable to convert unstructured object to %v: %v", gvks[0], err)
+	}
+	return typed, nil
+}
+
+// generateConvertMeta constructs the meta value we pass to Convert.
+func (s *Scheme) generateConvertMeta(in interface{}) (conversion.FieldMatchingFlags, *conversion.Meta) {
+	return s.converter.DefaultMeta(reflect.TypeOf(in))
+}
+
+// copyAndSetTargetKind performs a conditional copy before r
