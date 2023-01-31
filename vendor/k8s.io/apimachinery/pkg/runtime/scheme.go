@@ -321,4 +321,82 @@ func (s *Scheme) AddIgnoredConversionType(from, to interface{}) error {
 //		// e.g., "v1".
 //		s.Meta().DestVersion
 //		// Call scope.Convert to copy sub-fields.
-//		s.
+//		s.Convert(&in.SubFieldThatMoved, &out.NewLocation.NewName, 0)
+//		return nil
+//	},
+// )
+//
+// (For more detail about conversion functions, see Converter.Register's comment.)
+//
+// Also note that the default behavior, if you don't add a conversion function, is to
+// sanely copy fields that have the same names and same type names. It's OK if the
+// destination type has extra fields, but it must not remove any. So you only need to
+// add conversion functions for things with changed/removed fields.
+func (s *Scheme) AddConversionFuncs(conversionFuncs ...interface{}) error {
+	for _, f := range conversionFuncs {
+		if err := s.converter.RegisterConversionFunc(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AddGeneratedConversionFuncs registers conversion functions that were
+// automatically generated.
+func (s *Scheme) AddGeneratedConversionFuncs(conversionFuncs ...interface{}) error {
+	for _, f := range conversionFuncs {
+		if err := s.converter.RegisterGeneratedConversionFunc(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AddFieldLabelConversionFunc adds a conversion function to convert field selectors
+// of the given kind from the given version to internal version representation.
+func (s *Scheme) AddFieldLabelConversionFunc(version, kind string, conversionFunc FieldLabelConversionFunc) error {
+	if s.fieldLabelConversionFuncs[version] == nil {
+		s.fieldLabelConversionFuncs[version] = map[string]FieldLabelConversionFunc{}
+	}
+
+	s.fieldLabelConversionFuncs[version][kind] = conversionFunc
+	return nil
+}
+
+// AddStructFieldConversion allows you to specify a mechanical copy for a moved
+// or renamed struct field without writing an entire conversion function. See
+// the comment in conversion.Converter.SetStructFieldCopy for parameter details.
+// Call as many times as needed, even on the same fields.
+func (s *Scheme) AddStructFieldConversion(srcFieldType interface{}, srcFieldName string, destFieldType interface{}, destFieldName string) error {
+	return s.converter.SetStructFieldCopy(srcFieldType, srcFieldName, destFieldType, destFieldName)
+}
+
+// RegisterInputDefaults sets the provided field mapping function and field matching
+// as the defaults for the provided input type.  The fn may be nil, in which case no
+// mapping will happen by default. Use this method to register a mechanism for handling
+// a specific input type in conversion, such as a map[string]string to structs.
+func (s *Scheme) RegisterInputDefaults(in interface{}, fn conversion.FieldMappingFunc, defaultFlags conversion.FieldMatchingFlags) error {
+	return s.converter.RegisterInputDefaults(in, fn, defaultFlags)
+}
+
+// AddTypeDefaultingFuncs registers a function that is passed a pointer to an
+// object and can default fields on the object. These functions will be invoked
+// when Default() is called. The function will never be called unless the
+// defaulted object matches srcType. If this function is invoked twice with the
+// same srcType, the fn passed to the later call will be used instead.
+func (s *Scheme) AddTypeDefaultingFunc(srcType Object, fn func(interface{})) {
+	s.defaulterFuncs[reflect.TypeOf(srcType)] = fn
+}
+
+// Default sets defaults on the provided Object.
+func (s *Scheme) Default(src Object) {
+	if fn, ok := s.defaulterFuncs[reflect.TypeOf(src)]; ok {
+		fn(src)
+	}
+}
+
+// Convert will attempt to convert in into out. Both must be pointers. For easy
+// testing of conversion functions. Returns an error if the conversion isn't
+// possible. You can call this with types that haven't been registered (for example,
+// a to test conversion of types that are nested within registered types). The
+// context inte
