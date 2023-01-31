@@ -600,4 +600,22 @@ func (s *Scheme) generateConvertMeta(in interface{}) (conversion.FieldMatchingFl
 	return s.converter.DefaultMeta(reflect.TypeOf(in))
 }
 
-// copyAndSetTargetKind performs a conditional copy before r
+// copyAndSetTargetKind performs a conditional copy before returning the object, or an error if copy was not successful.
+func copyAndSetTargetKind(copy bool, obj Object, kind schema.GroupVersionKind) (Object, error) {
+	if copy {
+		obj = obj.DeepCopyObject()
+	}
+	setTargetKind(obj, kind)
+	return obj, nil
+}
+
+// setTargetKind sets the kind on an object, taking into account whether the target kind is the internal version.
+func setTargetKind(obj Object, kind schema.GroupVersionKind) {
+	if kind.Version == APIVersionInternal {
+		// internal is a special case
+		// TODO: look at removing the need to special case this
+		obj.GetObjectKind().SetGroupVersionKind(schema.GroupVersionKind{})
+		return
+	}
+	obj.GetObjectKind().SetGroupVersionKind(kind)
+}
