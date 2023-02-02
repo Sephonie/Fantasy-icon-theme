@@ -174,4 +174,89 @@ func writeMapBody(b *buffer, kubeType []Pair, indent int) {
 func ParseDocumentationFrom(src string) []KubeTypes {
 	var docForTypes []KubeTypes
 
-	pkg := astF
+	pkg := astFrom(src)
+
+	for _, kubType := range pkg.Types {
+		if structType, ok := kubType.Decl.Specs[0].(*ast.TypeSpec).Type.(*ast.StructType); ok {
+			var ks KubeTypes
+			ks = append(ks, Pair{kubType.Name, fmtRawDoc(kubType.Doc)})
+
+			for _, field := range structType.Fields.List {
+				if n := fieldName(field); n != "-" {
+					fieldDoc := fmtRawDoc(field.Doc.Text())
+					ks = append(ks, Pair{n, fieldDoc})
+				}
+			}
+			docForTypes = append(docForTypes, ks)
+		}
+	}
+
+	return docForTypes
+}
+
+// WriteSwaggerDocFunc writes a declaration of a function as a string. This function is used in
+// Swagger as a documentation source for structs and theirs fields
+func WriteSwaggerDocFunc(kubeTypes []KubeTypes, w io.Writer) error {
+	for _, kubeType := range kubeTypes {
+		structName := kubeType[0].Name
+		kubeType[0].Name = ""
+
+		// Ignore empty documentation
+		docfulTypes := make(KubeTypes, 0, len(kubeType))
+		for _, pair := range kubeType {
+			if pair.Doc != "" {
+				docfulTypes = append(docfulTypes, pair)
+			}
+		}
+
+		if len(docfulTypes) == 0 {
+			continue // If no fields and the struct have documentation, skip the function definition
+		}
+
+		indent := 0
+		buffer := newBuffer()
+
+		writeFuncHeader(buffer, structName, indent)
+		writeMapBody(buffer, docfulTypes, indent)
+		writeFuncFooter(buffer, structName, indent)
+		buffer.addLine("\n", 0)
+
+		if err := buffer.flushLines(w); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// VerifySwaggerDocsExist writes in a io.Writer a list of structs and fields that
+// are missing of documentation.
+func VerifySwaggerDocsExist(kubeTypes []KubeTypes, w io.Writer) (int, error) {
+	missingDocs := 0
+	buffer := newBuffer()
+
+	for _, kubeType := range kubeTypes {
+		structName := kubeType[0].Name
+		if kubeType[0].Doc == "" {
+			format := "Missing documentation for the struct itself: %s\n"
+			s := fmt.Sprintf(format, structName)
+			buffer.addLine(s, 0)
+			missingDocs++
+		}
+		kubeType = kubeType[1:] // Skip struct definition
+
+		for _, pair := range kubeType { // Iterate only the fields
+			if pair.Doc == "" {
+				format := "In struct: %s, field documentation is missing: %s\n"
+				s := fmt.Sprintf(format, structName, pair.Name)
+				buffer.addLine(s, 0)
+				missingDocs++
+			}
+		}
+	}
+
+	if err := buffer.flushLines(w); err != nil {
+		return -1, err
+	}
+	return missingDocs, nil
+}
