@@ -128,4 +128,74 @@ func filterErrors(list []error, fns ...Matcher) []error {
 	return result
 }
 
-// Fl
+// Flatten takes an Aggregate, which may hold other Aggregates in arbitrary
+// nesting, and flattens them all into a single Aggregate, recursively.
+func Flatten(agg Aggregate) Aggregate {
+	result := []error{}
+	if agg == nil {
+		return nil
+	}
+	for _, err := range agg.Errors() {
+		if a, ok := err.(Aggregate); ok {
+			r := Flatten(a)
+			if r != nil {
+				result = append(result, r.Errors()...)
+			}
+		} else {
+			if err != nil {
+				result = append(result, err)
+			}
+		}
+	}
+	return NewAggregate(result)
+}
+
+// CreateAggregateFromMessageCountMap converts MessageCountMap Aggregate
+func CreateAggregateFromMessageCountMap(m MessageCountMap) Aggregate {
+	if m == nil {
+		return nil
+	}
+	result := make([]error, 0, len(m))
+	for errStr, count := range m {
+		var countStr string
+		if count > 1 {
+			countStr = fmt.Sprintf(" (repeated %v times)", count)
+		}
+		result = append(result, fmt.Errorf("%v%v", errStr, countStr))
+	}
+	return NewAggregate(result)
+}
+
+// Reduce will return err or, if err is an Aggregate and only has one item,
+// the first item in the aggregate.
+func Reduce(err error) error {
+	if agg, ok := err.(Aggregate); ok && err != nil {
+		switch len(agg.Errors()) {
+		case 1:
+			return agg.Errors()[0]
+		case 0:
+			return nil
+		}
+	}
+	return err
+}
+
+// AggregateGoroutines runs the provided functions in parallel, stuffing all
+// non-nil errors into the returned Aggregate.
+// Returns nil if all the functions complete successfully.
+func AggregateGoroutines(funcs ...func() error) Aggregate {
+	errChan := make(chan error, len(funcs))
+	for _, f := range funcs {
+		go func(f func() error) { errChan <- f() }(f)
+	}
+	errs := make([]error, 0)
+	for i := 0; i < cap(errChan); i++ {
+		if err := <-errChan; err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return NewAggregate(errs)
+}
+
+// ErrPreconditionViolated is returned when the precondition is violated
+var ErrPreconditionViolated = errors.New("precondition is violated")
