@@ -92,4 +92,89 @@ type ErrorType string
 // TODO: These values are duplicated in api/types.go, but there's a circular dep.  Fix it.
 const (
 	// ErrorTypeNotFound is used to report failure to find a requested value
-	// (e.g. looking 
+	// (e.g. looking up an ID).  See NotFound().
+	ErrorTypeNotFound ErrorType = "FieldValueNotFound"
+	// ErrorTypeRequired is used to report required values that are not
+	// provided (e.g. empty strings, null values, or empty arrays).  See
+	// Required().
+	ErrorTypeRequired ErrorType = "FieldValueRequired"
+	// ErrorTypeDuplicate is used to report collisions of values that must be
+	// unique (e.g. unique IDs).  See Duplicate().
+	ErrorTypeDuplicate ErrorType = "FieldValueDuplicate"
+	// ErrorTypeInvalid is used to report malformed values (e.g. failed regex
+	// match, too long, out of bounds).  See Invalid().
+	ErrorTypeInvalid ErrorType = "FieldValueInvalid"
+	// ErrorTypeNotSupported is used to report unknown values for enumerated
+	// fields (e.g. a list of valid values).  See NotSupported().
+	ErrorTypeNotSupported ErrorType = "FieldValueNotSupported"
+	// ErrorTypeForbidden is used to report valid (as per formatting rules)
+	// values which would be accepted under some conditions, but which are not
+	// permitted by the current conditions (such as security policy).  See
+	// Forbidden().
+	ErrorTypeForbidden ErrorType = "FieldValueForbidden"
+	// ErrorTypeTooLong is used to report that the given value is too long.
+	// This is similar to ErrorTypeInvalid, but the error will not include the
+	// too-long value.  See TooLong().
+	ErrorTypeTooLong ErrorType = "FieldValueTooLong"
+	// ErrorTypeInternal is used to report other errors that are not related
+	// to user input.  See InternalError().
+	ErrorTypeInternal ErrorType = "InternalError"
+)
+
+// String converts a ErrorType into its corresponding canonical error message.
+func (t ErrorType) String() string {
+	switch t {
+	case ErrorTypeNotFound:
+		return "Not found"
+	case ErrorTypeRequired:
+		return "Required value"
+	case ErrorTypeDuplicate:
+		return "Duplicate value"
+	case ErrorTypeInvalid:
+		return "Invalid value"
+	case ErrorTypeNotSupported:
+		return "Unsupported value"
+	case ErrorTypeForbidden:
+		return "Forbidden"
+	case ErrorTypeTooLong:
+		return "Too long"
+	case ErrorTypeInternal:
+		return "Internal error"
+	default:
+		panic(fmt.Sprintf("unrecognized validation error: %q", string(t)))
+	}
+}
+
+// NotFound returns a *Error indicating "value not found".  This is
+// used to report failure to find a requested value (e.g. looking up an ID).
+func NotFound(field *Path, value interface{}) *Error {
+	return &Error{ErrorTypeNotFound, field.String(), value, ""}
+}
+
+// Required returns a *Error indicating "value required".  This is used
+// to report required values that are not provided (e.g. empty strings, null
+// values, or empty arrays).
+func Required(field *Path, detail string) *Error {
+	return &Error{ErrorTypeRequired, field.String(), "", detail}
+}
+
+// Duplicate returns a *Error indicating "duplicate value".  This is
+// used to report collisions of values that must be unique (e.g. names or IDs).
+func Duplicate(field *Path, value interface{}) *Error {
+	return &Error{ErrorTypeDuplicate, field.String(), value, ""}
+}
+
+// Invalid returns a *Error indicating "invalid value".  This is used
+// to report malformed values (e.g. failed regex match, too long, out of bounds).
+func Invalid(field *Path, value interface{}, detail string) *Error {
+	return &Error{ErrorTypeInvalid, field.String(), value, detail}
+}
+
+// NotSupported returns a *Error indicating "unsupported value".
+// This is used to report unknown values for enumerated fields (e.g. a list of
+// valid values).
+func NotSupported(field *Path, value interface{}, validValues []string) *Error {
+	detail := ""
+	if validValues != nil && len(validValues) > 0 {
+		quotedValues := make([]string, len(validValues))
+		for i, v := range validValues 
