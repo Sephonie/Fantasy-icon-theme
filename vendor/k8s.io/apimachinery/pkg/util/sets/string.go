@@ -166,4 +166,38 @@ func (s sortableSliceOfString) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // List returns the contents as a sorted string slice.
 func (s String) List() []string {
-	res := m
+	res := make(sortableSliceOfString, 0, len(s))
+	for key := range s {
+		res = append(res, key)
+	}
+	sort.Sort(res)
+	return []string(res)
+}
+
+// UnsortedList returns the slice with contents in random order.
+func (s String) UnsortedList() []string {
+	res := make([]string, 0, len(s))
+	for key := range s {
+		res = append(res, key)
+	}
+	return res
+}
+
+// Returns a single element from the set.
+func (s String) PopAny() (string, bool) {
+	for key := range s {
+		s.Delete(key)
+		return key, true
+	}
+	var zeroValue string
+	return zeroValue, false
+}
+
+// Len returns the size of the set.
+func (s String) Len() int {
+	return len(s)
+}
+
+func lessString(lhs, rhs string) bool {
+	return lhs < rhs
+}
