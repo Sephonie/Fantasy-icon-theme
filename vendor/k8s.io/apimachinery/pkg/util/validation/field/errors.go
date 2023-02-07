@@ -177,4 +177,83 @@ func NotSupported(field *Path, value interface{}, validValues []string) *Error {
 	detail := ""
 	if validValues != nil && len(validValues) > 0 {
 		quotedValues := make([]string, len(validValues))
-		for i, v := range validValues 
+		for i, v := range validValues {
+			quotedValues[i] = strconv.Quote(v)
+		}
+		detail = "supported values: " + strings.Join(quotedValues, ", ")
+	}
+	return &Error{ErrorTypeNotSupported, field.String(), value, detail}
+}
+
+// Forbidden returns a *Error indicating "forbidden".  This is used to
+// report valid (as per formatting rules) values which would be accepted under
+// some conditions, but which are not permitted by current conditions (e.g.
+// security policy).
+func Forbidden(field *Path, detail string) *Error {
+	return &Error{ErrorTypeForbidden, field.String(), "", detail}
+}
+
+// TooLong returns a *Error indicating "too long".  This is used to
+// report that the given value is too long.  This is similar to
+// Invalid, but the returned error will not include the too-long
+// value.
+func TooLong(field *Path, value interface{}, maxLength int) *Error {
+	return &Error{ErrorTypeTooLong, field.String(), value, fmt.Sprintf("must have at most %d characters", maxLength)}
+}
+
+// InternalError returns a *Error indicating "internal error".  This is used
+// to signal that an error was found that was not directly related to user
+// input.  The err argument must be non-nil.
+func InternalError(field *Path, err error) *Error {
+	return &Error{ErrorTypeInternal, field.String(), nil, err.Error()}
+}
+
+// ErrorList holds a set of Errors.  It is plausible that we might one day have
+// non-field errors in this same umbrella package, but for now we don't, so
+// we can keep it simple and leave ErrorList here.
+type ErrorList []*Error
+
+// NewErrorTypeMatcher returns an errors.Matcher that returns true
+// if the provided error is a Error and has the provided ErrorType.
+func NewErrorTypeMatcher(t ErrorType) utilerrors.Matcher {
+	return func(err error) bool {
+		if e, ok := err.(*Error); ok {
+			return e.Type == t
+		}
+		return false
+	}
+}
+
+// ToAggregate converts the ErrorList into an errors.Aggregate.
+func (list ErrorList) ToAggregate() utilerrors.Aggregate {
+	errs := make([]error, 0, len(list))
+	errorMsgs := sets.NewString()
+	for _, err := range list {
+		msg := fmt.Sprintf("%v", err)
+		if errorMsgs.Has(msg) {
+			continue
+		}
+		errorMsgs.Insert(msg)
+		errs = append(errs, err)
+	}
+	return utilerrors.NewAggregate(errs)
+}
+
+func fromAggregate(agg utilerrors.Aggregate) ErrorList {
+	errs := agg.Errors()
+	list := make(ErrorList, len(errs))
+	for i := range errs {
+		list[i] = errs[i].(*Error)
+	}
+	return list
+}
+
+// Filter removes items from the ErrorList that match the provided fns.
+func (list ErrorList) Filter(fns ...utilerrors.Matcher) ErrorList {
+	err := utilerrors.FilterOut(list.ToAggregate(), fns...)
+	if err == nil {
+		return nil
+	}
+	// FilterOut takes an Aggregate and returns an Aggregate
+	return fromAggregate(err.(utilerrors.Aggregate))
+}
