@@ -243,3 +243,23 @@ func (m *Broadcaster) distribute(event Event) {
 }
 
 // broadcasterWatcher handles a single watcher of a broadcaster
+type broadcasterWatcher struct {
+	result  chan Event
+	stopped chan struct{}
+	stop    sync.Once
+	id      int64
+	m       *Broadcaster
+}
+
+// ResultChan returns a channel to use for waiting on events.
+func (mw *broadcasterWatcher) ResultChan() <-chan Event {
+	return mw.result
+}
+
+// Stop stops watching and removes mw from its list.
+func (mw *broadcasterWatcher) Stop() {
+	mw.stop.Do(func() {
+		close(mw.stopped)
+		mw.m.stopWatching(mw.id)
+	})
+}
