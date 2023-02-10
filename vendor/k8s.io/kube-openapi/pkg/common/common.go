@@ -127,4 +127,42 @@ var schemaTypeFormatMap = map[string][]string{
 //      ...
 // }
 // // IntOrString documentation...
-// type IntOrString
+// type IntOrString { ... }
+//
+// Adding IntOrString to this function:
+// "port" : {
+//           format:      "string",
+//           type:        "int-or-string",
+//           Description: "port of the server"
+// }
+//
+// Implement OpenAPIDefinitionGetter for IntOrString:
+//
+// "port" : {
+//           $Ref:    "#/definitions/IntOrString"
+//           Description: "port of the server"
+// }
+// ...
+// definitions:
+// {
+//           "IntOrString": {
+//                     format:      "string",
+//                     type:        "int-or-string",
+//                     Description: "IntOrString documentation..."    // new
+//           }
+// }
+//
+func GetOpenAPITypeFormat(typeName string) (string, string) {
+	mapped, ok := schemaTypeFormatMap[typeName]
+	if !ok {
+		return "", ""
+	}
+	return mapped[0], mapped[1]
+}
+
+func EscapeJsonPointer(p string) string {
+	// Escaping reference name using rfc6901
+	p = strings.Replace(p, "~", "~0", -1)
+	p = strings.Replace(p, "/", "~1", -1)
+	return p
+}
