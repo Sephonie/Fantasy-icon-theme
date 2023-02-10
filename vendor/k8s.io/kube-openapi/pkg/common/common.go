@@ -55,4 +55,76 @@ type Config struct {
 	// Info is general information about the API.
 	Info *spec.Info
 
-	// DefaultResponse wi
+	// DefaultResponse will be used if an operation does not have any responses listed. It
+	// will show up as ... "responses" : {"default" : $DefaultResponse} in the spec.
+	DefaultResponse *spec.Response
+
+	// CommonResponses will be added as a response to all operation specs. This is a good place to add common
+	// responses such as authorization failed.
+	CommonResponses map[int]spec.Response
+
+	// List of webservice's path prefixes to ignore
+	IgnorePrefixes []string
+
+	// OpenAPIDefinitions should provide definition for all models used by routes. Failure to provide this map
+	// or any of the models will result in spec generation failure.
+	GetDefinitions GetOpenAPIDefinitions
+
+	// GetOperationIDAndTags returns operation id and tags for a restful route. It is an optional function to customize operation IDs.
+	GetOperationIDAndTags func(r *restful.Route) (string, []string, error)
+
+	// GetDefinitionName returns a friendly name for a definition base on the serving path. parameter `name` is the full name of the definition.
+	// It is an optional function to customize model names.
+	GetDefinitionName func(name string) (string, spec.Extensions)
+
+	// PostProcessSpec runs after the spec is ready to serve. It allows a final modification to the spec before serving.
+	PostProcessSpec func(*spec.Swagger) (*spec.Swagger, error)
+
+	// SecurityDefinitions is list of all security definitions for OpenAPI service. If this is not nil, the user of config
+	// is responsible to provide DefaultSecurity and (maybe) add unauthorized response to CommonResponses.
+	SecurityDefinitions *spec.SecurityDefinitions
+
+	// DefaultSecurity for all operations. This will pass as spec.SwaggerProps.Security to OpenAPI.
+	// For most cases, this will be list of acceptable definitions in SecurityDefinitions.
+	DefaultSecurity []map[string][]string
+}
+
+var schemaTypeFormatMap = map[string][]string{
+	"uint":        {"integer", "int32"},
+	"uint8":       {"integer", "byte"},
+	"uint16":      {"integer", "int32"},
+	"uint32":      {"integer", "int64"},
+	"uint64":      {"integer", "int64"},
+	"int":         {"integer", "int32"},
+	"int8":        {"integer", "byte"},
+	"int16":       {"integer", "int32"},
+	"int32":       {"integer", "int32"},
+	"int64":       {"integer", "int64"},
+	"byte":        {"integer", "byte"},
+	"float64":     {"number", "double"},
+	"float32":     {"number", "float"},
+	"bool":        {"boolean", ""},
+	"time.Time":   {"string", "date-time"},
+	"string":      {"string", ""},
+	"integer":     {"integer", ""},
+	"number":      {"number", ""},
+	"boolean":     {"boolean", ""},
+	"[]byte":      {"string", "byte"}, // base64 encoded characters
+	"interface{}": {"object", ""},
+}
+
+// This function is a reference for converting go (or any custom type) to a simple open API type,format pair. There are
+// two ways to customize spec for a type. If you add it here, a type will be converted to a simple type and the type
+// comment (the comment that is added before type definition) will be lost. The spec will still have the property
+// comment. The second way is to implement OpenAPIDefinitionGetter interface. That function can customize the spec (so
+// the spec does not need to be simple type,format) or can even return a simple type,format (e.g. IntOrString). For simple
+// type formats, the benefit of adding OpenAPIDefinitionGetter interface is to keep both type and property documentation.
+// Example:
+// type Sample struct {
+//      ...
+//      // port of the server
+//      port IntOrString
+//      ...
+// }
+// // IntOrString documentation...
+// type IntOrString
