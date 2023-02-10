@@ -350,4 +350,39 @@ func (e Equalities) deepValueDerive(v1, v2 reflect.Value, visited map[visit]bool
 			return true
 		}
 		for _, k := range v1.MapKeys() {
-			if !e.deepValueDerive(v1.MapIndex(k), v2.MapI
+			if !e.deepValueDerive(v1.MapIndex(k), v2.MapIndex(k), visited, depth+1) {
+				return false
+			}
+		}
+		return true
+	case reflect.Func:
+		if v1.IsNil() && v2.IsNil() {
+			return true
+		}
+		// Can't do better than this:
+		return false
+	default:
+		// Normal equality suffices
+		if !v1.CanInterface() || !v2.CanInterface() {
+			panic(unexportedTypePanic{})
+		}
+		return v1.Interface() == v2.Interface()
+	}
+}
+
+// DeepDerivative is similar to DeepEqual except that unset fields in a1 are
+// ignored (not compared). This allows us to focus on the fields that matter to
+// the semantic comparison.
+//
+// The unset fields include a nil pointer and an empty string.
+func (e Equalities) DeepDerivative(a1, a2 interface{}) bool {
+	if a1 == nil {
+		return true
+	}
+	v1 := reflect.ValueOf(a1)
+	v2 := reflect.ValueOf(a2)
+	if v1.Type() != v2.Type() {
+		return false
+	}
+	return e.deepValueDerive(v1, v2, make(map[visit]bool), 0)
+}
