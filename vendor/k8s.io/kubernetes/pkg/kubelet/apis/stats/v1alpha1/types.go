@@ -187,4 +187,96 @@ type CPUStats struct {
 type MemoryStats struct {
 	// The time at which these stats were updated.
 	Time metav1.Time `json:"time"`
-	// Available memory for use.  This is 
+	// Available memory for use.  This is defined as the memory limit - workingSetBytes.
+	// If memory limit is undefined, the available bytes is omitted.
+	// +optional
+	AvailableBytes *uint64 `json:"availableBytes,omitempty"`
+	// Total memory in use. This includes all memory regardless of when it was accessed.
+	// +optional
+	UsageBytes *uint64 `json:"usageBytes,omitempty"`
+	// The amount of working set memory. This includes recently accessed memory,
+	// dirty memory, and kernel memory. WorkingSetBytes is <= UsageBytes
+	// +optional
+	WorkingSetBytes *uint64 `json:"workingSetBytes,omitempty"`
+	// The amount of anonymous and swap cache memory (includes transparent
+	// hugepages).
+	// +optional
+	RSSBytes *uint64 `json:"rssBytes,omitempty"`
+	// Cumulative number of minor page faults.
+	// +optional
+	PageFaults *uint64 `json:"pageFaults,omitempty"`
+	// Cumulative number of major page faults.
+	// +optional
+	MajorPageFaults *uint64 `json:"majorPageFaults,omitempty"`
+}
+
+// AcceleratorStats contains stats for accelerators attached to the container.
+type AcceleratorStats struct {
+	// Make of the accelerator (nvidia, amd, google etc.)
+	Make string `json:"make"`
+
+	// Model of the accelerator (tesla-p100, tesla-k80 etc.)
+	Model string `json:"model"`
+
+	// ID of the accelerator.
+	ID string `json:"id"`
+
+	// Total accelerator memory.
+	// unit: bytes
+	MemoryTotal uint64 `json:"memoryTotal"`
+
+	// Total accelerator memory allocated.
+	// unit: bytes
+	MemoryUsed uint64 `json:"memoryUsed"`
+
+	// Percent of time over the past sample period (10s) during which
+	// the accelerator was actively processing.
+	DutyCycle uint64 `json:"dutyCycle"`
+}
+
+// VolumeStats contains data about Volume filesystem usage.
+type VolumeStats struct {
+	// Embedded FsStats
+	FsStats
+	// Name is the name given to the Volume
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Reference to the PVC, if one exists
+	// +optional
+	PVCRef *PVCReference `json:"pvcRef,omitempty"`
+}
+
+// PVCReference contains enough information to describe the referenced PVC.
+type PVCReference struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
+// FsStats contains data about filesystem usage.
+type FsStats struct {
+	// The time at which these stats were updated.
+	Time metav1.Time `json:"time"`
+	// AvailableBytes represents the storage space available (bytes) for the filesystem.
+	// +optional
+	AvailableBytes *uint64 `json:"availableBytes,omitempty"`
+	// CapacityBytes represents the total capacity (bytes) of the filesystems underlying storage.
+	// +optional
+	CapacityBytes *uint64 `json:"capacityBytes,omitempty"`
+	// UsedBytes represents the bytes used for a specific task on the filesystem.
+	// This may differ from the total bytes used on the filesystem and may not equal CapacityBytes - AvailableBytes.
+	// e.g. For ContainerStats.Rootfs this is the bytes used by the container rootfs on the filesystem.
+	// +optional
+	UsedBytes *uint64 `json:"usedBytes,omitempty"`
+	// InodesFree represents the free inodes in the filesystem.
+	// +optional
+	InodesFree *uint64 `json:"inodesFree,omitempty"`
+	// Inodes represents the total inodes in the filesystem.
+	// +optional
+	Inodes *uint64 `json:"inodes,omitempty"`
+	// InodesUsed represents the inodes used by the filesystem
+	// This may not equal Inodes - InodesFree because this filesystem may share inodes with other "filesystems"
+	// e.g. For ContainerStats.Rootfs, this is the inodes used only by that container, and does not count inodes used by other containers.
+	InodesUsed *uint64 `json:"inodesUsed,omitempty"`
+}
+
+// UserDefinedMetricType 
