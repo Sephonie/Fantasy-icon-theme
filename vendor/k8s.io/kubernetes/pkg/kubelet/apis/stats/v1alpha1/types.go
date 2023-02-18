@@ -100,4 +100,91 @@ type PodStats struct {
 	// +optional
 	// +patchMergeKey=name
 	// +patchStrategy=merge
-	VolumeSta
+	VolumeStats []VolumeStats `json:"volume,omitempty" patchStrategy:"merge" patchMergeKey:"name"`
+	// EphemeralStorage reports the total filesystem usage for the containers and emptyDir-backed volumes in the measured Pod.
+	// +optional
+	EphemeralStorage *FsStats `json:"ephemeral-storage,omitempty"`
+}
+
+// ContainerStats holds container-level unprocessed sample stats.
+type ContainerStats struct {
+	// Reference to the measured container.
+	Name string `json:"name"`
+	// The time at which data collection for this container was (re)started.
+	StartTime metav1.Time `json:"startTime"`
+	// Stats pertaining to CPU resources.
+	// +optional
+	CPU *CPUStats `json:"cpu,omitempty"`
+	// Stats pertaining to memory (RAM) resources.
+	// +optional
+	Memory *MemoryStats `json:"memory,omitempty"`
+	// Metrics for Accelerators. Each Accelerator corresponds to one element in the array.
+	Accelerators []AcceleratorStats `json:"accelerators,omitempty"`
+	// Stats pertaining to container rootfs usage of filesystem resources.
+	// Rootfs.UsedBytes is the number of bytes used for the container write layer.
+	// +optional
+	Rootfs *FsStats `json:"rootfs,omitempty"`
+	// Stats pertaining to container logs usage of filesystem resources.
+	// Logs.UsedBytes is the number of bytes used for the container logs.
+	// +optional
+	Logs *FsStats `json:"logs,omitempty"`
+	// User defined metrics that are exposed by containers in the pod. Typically, we expect only one container in the pod to be exposing user defined metrics. In the event of multiple containers exposing metrics, they will be combined here.
+	// +patchMergeKey=name
+	// +patchStrategy=merge
+	UserDefinedMetrics []UserDefinedMetric `json:"userDefinedMetrics,omitmepty" patchStrategy:"merge" patchMergeKey:"name"`
+}
+
+// PodReference contains enough information to locate the referenced pod.
+type PodReference struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	UID       string `json:"uid"`
+}
+
+// InterfaceStats contains resource value data about interface.
+type InterfaceStats struct {
+	// The name of the interface
+	Name string `json:"name"`
+	// Cumulative count of bytes received.
+	// +optional
+	RxBytes *uint64 `json:"rxBytes,omitempty"`
+	// Cumulative count of receive errors encountered.
+	// +optional
+	RxErrors *uint64 `json:"rxErrors,omitempty"`
+	// Cumulative count of bytes transmitted.
+	// +optional
+	TxBytes *uint64 `json:"txBytes,omitempty"`
+	// Cumulative count of transmit errors encountered.
+	// +optional
+	TxErrors *uint64 `json:"txErrors,omitempty"`
+}
+
+// NetworkStats contains data about network resources.
+type NetworkStats struct {
+	// The time at which these stats were updated.
+	Time metav1.Time `json:"time"`
+
+	// Stats for the default interface, if found
+	InterfaceStats `json:",inline"`
+
+	Interfaces []InterfaceStats `json:"interfaces,omitempty"`
+}
+
+// CPUStats contains data about CPU usage.
+type CPUStats struct {
+	// The time at which these stats were updated.
+	Time metav1.Time `json:"time"`
+	// Total CPU usage (sum of all cores) averaged over the sample window.
+	// The "core" unit can be interpreted as CPU core-nanoseconds per second.
+	// +optional
+	UsageNanoCores *uint64 `json:"usageNanoCores,omitempty"`
+	// Cumulative CPU usage (sum of all cores) since object creation.
+	// +optional
+	UsageCoreNanoSeconds *uint64 `json:"usageCoreNanoSeconds,omitempty"`
+}
+
+// MemoryStats contains data about memory usage.
+type MemoryStats struct {
+	// The time at which these stats were updated.
+	Time metav1.Time `json:"time"`
+	// Available memory for use.  This is 
