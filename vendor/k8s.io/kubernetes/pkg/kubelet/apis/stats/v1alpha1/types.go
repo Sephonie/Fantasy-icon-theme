@@ -279,4 +279,42 @@ type FsStats struct {
 	InodesUsed *uint64 `json:"inodesUsed,omitempty"`
 }
 
-// UserDefinedMetricType 
+// UserDefinedMetricType defines how the metric should be interpreted by the user.
+type UserDefinedMetricType string
+
+const (
+	// MetricGauge is an instantaneous value. May increase or decrease.
+	MetricGauge UserDefinedMetricType = "gauge"
+
+	// MetricCumulative is a counter-like value that is only expected to increase.
+	MetricCumulative UserDefinedMetricType = "cumulative"
+
+	// MetricDelta is a rate over a time period.
+	MetricDelta UserDefinedMetricType = "delta"
+)
+
+// UserDefinedMetricDescriptor contains metadata that describes a user defined metric.
+type UserDefinedMetricDescriptor struct {
+	// The name of the metric.
+	Name string `json:"name"`
+
+	// Type of the metric.
+	Type UserDefinedMetricType `json:"type"`
+
+	// Display Units for the stats.
+	Units string `json:"units"`
+
+	// Metadata labels associated with this metric.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// UserDefinedMetric represents a metric defined and generate by users.
+type UserDefinedMetric struct {
+	UserDefinedMetricDescriptor `json:",inline"`
+	// The time at which these stats were updated.
+	Time metav1.Time `json:"time"`
+	// Value of the metric. Float64s have 53 bit precision.
+	// We do not foresee any metrics exceeding that value.
+	Value float64 `json:"value"`
+}
